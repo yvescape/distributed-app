@@ -1,0 +1,33 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: product_db
+      POSTGRES_USER: product_user
+      POSTGRES_PASSWORD: pass_product
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U product_user -d product_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Hot-reload en dev : monter le code source
+      - ./products:/app/products
+
+volumes:
+  postgres_data:

@@ -1,0 +1,58 @@
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.pyc
+
+# ── Environnements virtuels ───────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Django ────────────────────────────────────────────────────
+*.log
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# ── Variables d'environnement — JAMAIS commiter ───────────────
+.env
+.env.local
+.env.prod
+.env.production
+*.pem
+*.key
+*.p12
+
+# ── Docker ────────────────────────────────────────────────────
+.dockerignore
+
+# ── Kubernetes secrets locaux ─────────────────────────────────
+k8s/secrets/
+*-secret-local.yaml
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Git ───────────────────────────────────────────────────────
+*.orig
+*.rej
+
+# ── Rapports Trivy ───────────────────────────────────────────
+trivy-report.json
+trivy-results.sarif
+
+# ── Node (si frontend dans le repo) ──────────────────────────
+node_modules/
