@@ -16,10 +16,13 @@ jobs:
   test:
     name: Tests unitaires
     runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash    # ← ajouter
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5    # ← v5
 
       - name: Install dependencies
         working-directory: backend/users-service
@@ -41,10 +44,13 @@ jobs:
     runs-on: self-hosted
     needs: test
     if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash    # ← ajouter
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5    # ← v5
 
       - name: Build image
         working-directory: backend/users-service
@@ -75,6 +81,9 @@ jobs:
     runs-on: self-hosted
     needs: build
     if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash    # ← ajouter
 
     steps:
       - name: Update image
