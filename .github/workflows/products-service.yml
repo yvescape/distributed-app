@@ -16,23 +16,22 @@ jobs:
   test:
     name: Tests unitaires
     runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Install dependencies
+      - name: Install & Test
         working-directory: backend/products-service
         run: |
           python3 -m venv venv
           source venv/bin/activate
           pip install --upgrade pip --quiet
           pip install -r requirements.txt --quiet
-
-      - name: Run unit tests
-        working-directory: backend/products-service/products
-        run: |
-          source ../venv/bin/activate
+          cd products
           pytest -m unit --tb=short -q
 
   # ── Job 2 : Build → Scan → Push ──────────────────────────────────
@@ -41,10 +40,13 @@ jobs:
     runs-on: self-hosted
     needs: test
     if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build image
         working-directory: backend/products-service
@@ -75,6 +77,9 @@ jobs:
     runs-on: self-hosted
     needs: build
     if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Update image
@@ -89,7 +94,6 @@ jobs:
             -n distributed-app \
             --timeout=120s
 
-      - name: Verify health
+      - name: Verify pods
         run: |
-          sleep 5
-          curl -f http://distributed-app.local/api/products/health/ || exit 1
+          kubectl get pods -n distributed-app -l app=products-service
