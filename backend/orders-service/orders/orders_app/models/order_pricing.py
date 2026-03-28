@@ -1,10 +1,13 @@
 from django.db import models
 from decimal import Decimal
+import uuid
 from .order import Order
 from .delivery_option import DeliveryOption
 
 
 class OrderPricing(models.Model):
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)  # ← ajouter
 
     order = models.OneToOneField(
         Order,
@@ -19,45 +22,23 @@ class OrderPricing(models.Model):
         related_name="order_pricings"
     )
 
-    subtotal = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0
-    )
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    delivery_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    delivery_price = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0
-    )
-
-    total = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0
-    )
-
-    currency = models.CharField(
-        max_length=10,
-        default="XOF"
-    )
-
+    currency = models.CharField(max_length=10, default="XOF")
     updated_at = models.DateTimeField(auto_now=True)
 
     def calculate_totals(self):
-
-        # récupération du sous total depuis les items de la commande
         subtotal = sum(
             item.price * item.quantity
             for item in self.order.items.all()
         )
-
         delivery_price = (
             self.delivery_option.amount
             if self.delivery_option
             else Decimal("0")
         )
-
         self.subtotal = subtotal
         self.delivery_price = delivery_price
         self.total = subtotal + delivery_price

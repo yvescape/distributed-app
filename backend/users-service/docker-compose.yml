@@ -8,25 +8,40 @@ services:
       POSTGRES_PASSWORD: pass_auth
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Décommentez pour déboguer depuis votre machine
+    # ports:
+    #   - "5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - auth_network
 
   django:
     build:
       context: .
       dockerfile: Dockerfile
     env_file:
-      - .env
+      - .env.docker
+    # ── Fix 4 : DB_HOST garanti vers le service postgres ──────────────
+    environment:
+      DB_HOST: postgres
+      DJANGO_SETTINGS_MODULE: config.settings.base
     ports:
-      - "8001:8000"           # ← port différent de payment-service (8000)
+      - "8001:8000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./auth:/app/config    # ← pointe vers /app/config, là où le code est
+      - ./auth:/app/auth
+    networks:
+      - auth_network
+
+networks:
+  auth_network:
+    driver: bridge
 
 volumes:
   postgres_data:

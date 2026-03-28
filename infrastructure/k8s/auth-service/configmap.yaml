@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-config
+  namespace: distributed-app
+data:
+  DJANGO_SETTINGS_MODULE: "config.settings.base"
+  DB_ENGINE: "django.db.backends.postgresql"
+  DB_HOST: "postgres-auth"           # ← nom du Service postgres
+  DB_NAME: "auth_db"
+  DB_PORT: "5432"
+  DB_USER: "auth_user"
+  ALLOWED_HOSTS: "*"
+  DEBUG: "False"

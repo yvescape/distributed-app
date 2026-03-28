@@ -14,6 +14,7 @@ class OrderAddressSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "city",
+            "address_line",
             "postal_code",
         ]
         read_only_fields = ["id"]

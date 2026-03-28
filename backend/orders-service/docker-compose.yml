@@ -5,29 +5,42 @@ services:
     environment:
       POSTGRES_DB: order_db
       POSTGRES_USER: order_user
-      POSTGRES_PASSWORD: pass_orders
+      POSTGRES_PASSWORD: pass_order
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Décommentez pour déboguer depuis votre machine
+    # ports:
+    #   - "5436:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U order_user -d order_db"]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - orders_network
 
   django:
     build:
       context: .
       dockerfile: Dockerfile
     env_file:
-      - .env
+      - .env.docker
+    environment:
+      DB_HOST: postgres                          # ← garanti vers le service postgres
+      DJANGO_SETTINGS_MODULE: orders.settings.base  # ← route correcte
     ports:
-      - "8003:8000"
+      - "8003:8000"                              # ← user=8001, products=8002, orders=8003
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      # Hot-reload en dev : monter le code source
       - ./orders:/app/orders
+    networks:
+      - orders_network
+
+networks:
+  orders_network:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -24,6 +24,7 @@ staticfiles/
 .env.local
 .env.prod
 .env.production
+.env.docker          # ← ajouter
 *.pem
 *.key
 *.p12
@@ -34,6 +35,8 @@ staticfiles/
 # ── Kubernetes secrets locaux ─────────────────────────────────
 k8s/secrets/
 *-secret-local.yaml
+# ⚠️  Les secrets.yaml dans k8s/ ne doivent PAS être commités
+infrastructure/k8s/**/secret.yaml   # ← ajouter
 
 # ── IDE ───────────────────────────────────────────────────────
 .vscode/
@@ -54,5 +57,14 @@ desktop.ini
 trivy-report.json
 trivy-results.sarif
 
-# ── Node (si frontend dans le repo) ──────────────────────────
+# ── Node ──────────────────────────────────────────────────────
 node_modules/
+
+# ── GitHub Actions runner ─────────────────────────────────────
+actions-runner/      # ← ajouter — ne pas commiter le runner
+
+# ── pytest ────────────────────────────────────────────────────
+.pytest_cache/       # ← ajouter
+.coverage
+htmlcov/
+coverage.xml

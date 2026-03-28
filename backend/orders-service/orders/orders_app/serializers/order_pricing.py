@@ -7,6 +7,7 @@ class OrderPricingSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderPricing
         fields = [
+            "id",
             "order",
             "delivery_option",
             "subtotal",

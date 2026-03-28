@@ -25,22 +25,30 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN useradd -m -u 1001 django
-USER django
 
-# Un fichier par COPY — plus de confusion sur la destination
+# Copier le code et rendre entrypoint exécutable AVANT USER django
 COPY --chown=django:django entrypoint.sh .
 COPY --chown=django:django payement/ ./payement/
 
-RUN DJANGO_SETTINGS_MODULE=payement.settings \
+RUN chmod +x ./entrypoint.sh
+
+# ── settings route : payement.settings ───────────────────────────────
+RUN DJANGO_SETTINGS_MODULE=payement.settings.base \
     SECRET_KEY=build-only-dummy-key \
     ALLOWED_HOSTS=localhost \
-    DB_HOST=localhost \
+    DB_ENGINE=django.db.backends.postgresql \
+    DB_NAME=dummy \
+    DB_USER=dummy \
     DB_PASSWORD=dummy \
+    DB_HOST=localhost \
+    DB_PORT=5432 \
     python payement/manage.py collectstatic --noinput
+
+USER django
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DJANGO_SETTINGS_MODULE=payement.settings
+    DJANGO_SETTINGS_MODULE=payement.settings.base
 
 LABEL org.opencontainers.image.title="payment-service"
 

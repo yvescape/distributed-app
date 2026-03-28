@@ -16,17 +16,15 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = [
-            "id",
-            "user_id",
-            "customer_name",
-            "customer_email",
-            "customer_phone",
-            "items",
-            "address",
-        ]
+        fields = ["id", "user_id", "customer_name", "customer_email",
+                  "customer_phone", "items", "address"]
         read_only_fields = ["id"]
 
+    def validate_items(self, value):
+        if len(value) == 0:
+            raise serializers.ValidationError("La commande doit contenir au moins un article.")
+        return value
+    
     def create(self, validated_data):
 
         items_data = validated_data.pop("items")

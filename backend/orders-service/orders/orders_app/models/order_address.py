@@ -18,4 +18,4 @@ class OrderAddress(models.Model):
     postal_code = models.CharField(max_length=20, blank=True)
 
     def __str__(self):
-        return f"{self.city} - {self.country}"
+        return f"{self.city} - {self.address_line}"

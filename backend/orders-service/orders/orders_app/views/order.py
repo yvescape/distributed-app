@@ -3,6 +3,7 @@ from ..models.order import Order
 from ..serializers.order import OrderCreateSerializer, OrderDetailSerializer, OrderStatusUpdateSerializer
 
 
+
 class OrderCreateView(generics.CreateAPIView):
 
     queryset = Order.objects.all()
@@ -35,3 +36,4 @@ class OrderStatusUpdateView(generics.UpdateAPIView):
 
     queryset = Order.objects.all()
     serializer_class = OrderStatusUpdateSerializer
+    permission_classes = [permissions.IsAdminUser]
