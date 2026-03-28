@@ -1,0 +1,95 @@
+name: Auth Service — CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/users-service/**"
+      - ".github/workflows/auth-service.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/users-service/**"
+
+jobs:
+  # ── Job 1 : Tests unitaires ───────────────────────────────────────
+  test:
+    name: Tests unitaires
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        working-directory: backend/users-service
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip --quiet
+          pip install -r requirements.txt --quiet
+
+      - name: Run unit tests
+        working-directory: backend/users-service/auth
+        run: |
+          source ../venv/bin/activate
+          pytest -m unit --tb=short -q
+
+  # ── Job 2 : Build → Scan → Push ──────────────────────────────────
+  build:
+    name: Build & Push
+    runs-on: self-hosted
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        working-directory: backend/users-service
+        run: |
+          docker build \
+            --tag capedev/auth-service:${{ github.sha }} \
+            --tag capedev/auth-service:latest \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f dockerfile .
+
+      - name: Scan Trivy (bloquant)
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format table \
+            capedev/auth-service:${{ github.sha }}
+
+      - name: Push Docker Hub
+        run: |
+          docker push capedev/auth-service:${{ github.sha }}
+          docker push capedev/auth-service:latest
+
+  # ── Job 3 : Deploy sur k3s ────────────────────────────────────────
+  deploy:
+    name: Deploy k3s
+    runs-on: self-hosted
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Update image
+        run: |
+          kubectl set image deployment/auth-service \
+            django=capedev/auth-service:${{ github.sha }} \
+            -n distributed-app
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/auth-service \
+            -n distributed-app \
+            --timeout=120s
+
+      - name: Verify health
+        run: |
+          sleep 5
+          curl -f http://distributed-app.local/api/auth/health/ || exit 1
