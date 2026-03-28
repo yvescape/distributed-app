@@ -35,8 +35,8 @@ staticfiles/
 # ── Kubernetes secrets locaux ─────────────────────────────────
 k8s/secrets/
 *-secret-local.yaml
-# ⚠️  Les secrets.yaml dans k8s/ ne doivent PAS être commités
-infrastructure/k8s/**/secret.yaml   # ← ajouter
+secret.yaml
+**/secret.yaml
 
 # ── IDE ───────────────────────────────────────────────────────
 .vscode/
@@ -68,3 +68,6 @@ actions-runner/      # ← ajouter — ne pas commiter le runner
 .coverage
 htmlcov/
 coverage.xml
+
+# ── gitops-repo ────────────────────────────────────────────────────
+gitops-repo/
