@@ -71,9 +71,9 @@ jobs:
           docker push capedev/payments-service:${{ github.sha }}
           docker push capedev/payments-service:latest
 
-  # ── Job 3 : Deploy sur k3s ────────────────────────────────────────
+  # ── Job 3 : Deploy via GitOps ─────────────────────────────────────
   deploy:
-    name: Deploy k3s
+    name: Deploy via GitOps
     runs-on: self-hosted
     needs: build
     if: github.ref == 'refs/heads/main'
@@ -82,18 +82,28 @@ jobs:
         shell: bash
 
     steps:
-      - name: Update image
-        run: |
-          kubectl set image deployment/payment-service \
-            django=capedev/payments-service:${{ github.sha }} \
-            -n distributed-app
+      - name: Checkout gitops-repo
+        uses: actions/checkout@v5
+        with:
+          repository: yvescape/gitops-repo
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops-repo
 
-      - name: Wait for rollout
+      - name: Update image tag in gitops-repo
         run: |
-          kubectl rollout status deployment/payment-service \
-            -n distributed-app \
-            --timeout=120s
+          sed -i "s|capedev/payments-service:.*|capedev/payments-service:${{ github.sha }}|" \
+            gitops-repo/apps/production/payment-service/deployment.yaml
 
-      - name: Verify pods
+      - name: Commit and push to gitops-repo
         run: |
-          kubectl get pods -n distributed-app -l app=payment-service
+          cd gitops-repo
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git add apps/production/payment-service/deployment.yaml
+          git commit -m "deploy: payments-service ${{ github.sha }}"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "ArgoCD va détecter le changement et synchroniser automatiquement."
+          echo "Image déployée : capedev/payments-service:${{ github.sha }}"

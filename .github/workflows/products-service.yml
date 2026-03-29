@@ -71,9 +71,9 @@ jobs:
           docker push capedev/products-service:${{ github.sha }}
           docker push capedev/products-service:latest
 
-  # ── Job 3 : Deploy sur k3s ────────────────────────────────────────
+  # ── Job 3 : Deploy via GitOps ─────────────────────────────────────
   deploy:
-    name: Deploy k3s
+    name: Deploy via GitOps
     runs-on: self-hosted
     needs: build
     if: github.ref == 'refs/heads/main'
@@ -82,18 +82,28 @@ jobs:
         shell: bash
 
     steps:
-      - name: Update image
-        run: |
-          kubectl set image deployment/products-service \
-            django=capedev/products-service:${{ github.sha }} \
-            -n distributed-app
+      - name: Checkout gitops-repo
+        uses: actions/checkout@v5
+        with:
+          repository: yvescape/gitops-repo
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops-repo
 
-      - name: Wait for rollout
+      - name: Update image tag in gitops-repo
         run: |
-          kubectl rollout status deployment/products-service \
-            -n distributed-app \
-            --timeout=120s
+          sed -i "s|capedev/products-service:.*|capedev/products-service:${{ github.sha }}|" \
+            gitops-repo/apps/production/products-service/deployment.yaml
 
-      - name: Verify pods
+      - name: Commit and push to gitops-repo
         run: |
-          kubectl get pods -n distributed-app -l app=products-service
+          cd gitops-repo
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git add apps/production/products-service/deployment.yaml
+          git commit -m "deploy: products-service ${{ github.sha }}"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "ArgoCD va détecter le changement et synchroniser automatiquement."
+          echo "Image déployée : capedev/products-service:${{ github.sha }}"
