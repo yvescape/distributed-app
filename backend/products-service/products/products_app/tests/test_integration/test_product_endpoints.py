@@ -5,11 +5,10 @@ from decimal import Decimal
 from ..factories import ProductFactory
 
 
-PRODUCTS_URL = "/api/products/"
-
+PRODUCTS_URL = "/"
 
 def detail_url(product_id):
-    return f"/api/products/{product_id}/"
+    return f"/{product_id}/"
 
 
 @pytest.mark.integration
@@ -52,11 +51,10 @@ class TestProductListEndpoint:
         ProductFactory()
         response = api_client.get(PRODUCTS_URL)
         product = response.data["results"][0]
-        expected = {"id", "name", "category", "price", "size", "image", "notes", "badge"}
+        expected = {"id", "name", "category", "price", "size", "image", "notes", "badge", "family", "gender"}
         assert expected.issubset(set(product.keys()))
 
     def test_list_does_not_expose_detail_fields(self, api_client, db):
-        """La liste ne doit pas exposer les champs détail."""
         ProductFactory()
         response = api_client.get(PRODUCTS_URL)
         product = response.data["results"][0]
@@ -112,7 +110,7 @@ class TestProductDetailEndpoint:
         assert response.status_code == 404
 
     def test_detail_invalid_uuid_returns_404(self, api_client, db):
-        response = api_client.get("/api/products/not-a-uuid/")
+        response = api_client.get("/not-a-uuid/")
         assert response.status_code == 404
 
     def test_detail_price_value(self, api_client, db):

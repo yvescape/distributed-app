@@ -23,13 +23,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: capedev/payments-service:latest
+    container_name: payments
     env_file:
       - .env.docker
     environment:
-      DB_HOST: postgres                    # ← garanti vers le service postgres
+      DB_HOST: postgres
       DJANGO_SETTINGS_MODULE: payement.settings.base
     ports:
-      - "8004:8000"                        # ← user=8001, products=8002, orders=8003, payment=8004
+      - "8004:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,10 +39,14 @@ services:
       - ./payement:/app/payement
     networks:
       - payment_network
+      - microservices-net
 
 networks:
   payment_network:
     driver: bridge
-
+  microservices-net:
+    name: microservices-net
+    driver: bridge
+    
 volumes:
   postgres_data:

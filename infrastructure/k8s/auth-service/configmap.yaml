@@ -6,7 +6,7 @@ metadata:
 data:
   DJANGO_SETTINGS_MODULE: "config.settings.base"
   DB_ENGINE: "django.db.backends.postgresql"
-  DB_HOST: "postgres-auth"           # ← nom du Service postgres
+  DB_HOST: "postgres-auth"
   DB_NAME: "auth_db"
   DB_PORT: "5432"
   DB_USER: "auth_user"

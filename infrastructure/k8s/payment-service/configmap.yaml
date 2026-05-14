@@ -4,15 +4,12 @@ metadata:
   name: payment-config
   namespace: distributed-app
 data:
-  # settings route : payement/settings.py
   DJANGO_SETTINGS_MODULE: "payement.settings.base"
-
   DB_ENGINE: "django.db.backends.postgresql"
-  DB_HOST: "postgres-payment"        # ← nom du Service postgres
+  DB_HOST: "postgres-payment"
   DB_NAME: "payement_db"
   DB_PORT: "5432"
   DB_USER: "payement_user"
-
   ALLOWED_HOSTS: "*"
-
   DEBUG: "False"
+  ORDERS_SERVICE_URL: "http://orders-service:8000"

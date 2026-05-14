@@ -1,7 +1,7 @@
 # tests/conftest.py
 import pytest
 from rest_framework.test import APIClient
-from .factories import UserFactory, UserProfileFactory
+from .factories import UserFactory
 
 
 # ── Clients HTTP ───────────────────────────────────────────────────────────────
@@ -30,26 +30,20 @@ def admin_client(api_client, admin_user):
 
 @pytest.fixture
 def user(db):
-    """Utilisateur standard avec profil."""
-    u = UserFactory()
-    UserProfileFactory(user=u)
-    return u
+    """Utilisateur standard."""
+    return UserFactory()
 
 
 @pytest.fixture
 def admin_user(db):
-    """Utilisateur staff/superuser avec profil."""
-    u = UserFactory(is_staff=True, is_superuser=True)
-    UserProfileFactory(user=u)
-    return u
+    """Utilisateur staff/superuser."""
+    return UserFactory(is_staff=True, is_superuser=True)
 
 
 @pytest.fixture
 def inactive_user(db):
-    """Utilisateur désactivé avec profil."""
-    u = UserFactory(is_active=False)
-    UserProfileFactory(user=u)
-    return u
+    """Utilisateur désactivé."""
+    return UserFactory(is_active=False)
 
 
 # ── Données d'inscription valides ─────────────────────────────────────────────

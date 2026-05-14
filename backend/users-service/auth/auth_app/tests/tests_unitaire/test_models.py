@@ -3,8 +3,7 @@ import pytest
 import uuid
 from django.utils import timezone
 from auth_app.models.user_audit_log import UserAuditLog
-from auth_app.models.user_profile import UserProfile
-from ..factories import UserFactory, UserProfileFactory, UserAuditLogFactory
+from ..factories import UserFactory, UserAuditLogFactory
 
 
 @pytest.mark.unit
@@ -73,44 +72,6 @@ class TestUserModel:
         user.save()
         user.refresh_from_db()
         assert user.updated_at >= old_updated_at
-
-
-@pytest.mark.unit
-class TestUserProfileModel:
-
-    def test_profile_creation(self, db):
-        user = UserFactory()
-        profile = UserProfileFactory(user=user, bio="Dev Django", country="France")
-        assert profile.user == user
-        assert profile.bio == "Dev Django"
-        assert profile.country == "France"
-
-    def test_profile_str(self, db):
-        user = UserFactory(email="profil@example.com")
-        profile = UserProfileFactory(user=user)
-        assert str(profile) == f"Profile of {user.email}"
-
-    def test_profile_cascade_delete(self, db):
-        user = UserFactory()
-        UserProfileFactory(user=user)
-        user_id = user.pk
-        user.delete()
-        assert not UserProfile.objects.filter(user_id=user_id).exists()
-
-    def test_profile_optional_fields_default_blank(self, db):
-        user = UserFactory()
-        profile = UserProfile.objects.create(user=user)
-        assert profile.phone_number == ""
-        assert profile.avatar == ""
-        assert profile.bio == ""
-        assert profile.country == ""
-
-    def test_profile_one_to_one_constraint(self, db):
-        from django.db import IntegrityError
-        user = UserFactory()
-        UserProfile.objects.create(user=user)
-        with pytest.raises(IntegrityError):
-            UserProfile.objects.create(user=user)
 
 
 @pytest.mark.unit

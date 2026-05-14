@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -48,13 +49,16 @@ INSTALLED_APPS = [
     # Packages
     'rest_framework',
     'rest_framework_simplejwt',
+    "corsheaders",
 
     # App
     'orders_app.apps.OrdersAppConfig',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -64,6 +68,28 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'orders.urls'
+
+# En dev, autorise le frontend
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+PRODUCTS_SERVICE_URL = os.getenv(
+    "PRODUCTS_SERVICE_URL",
+    "http://127.0.0.1:8001/api"  # valeur par défaut en local
+)
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost",
+    "http://localhost:9001",
+    "http://localhost:9002",
+    "http://localhost:9003",
+    "http://localhost:9004",
+    "http://localhost:9005",
+]
+
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "votre-cle-secrete-partagee")
+INTERNAL_SERVICE_TOKEN = os.environ.get("INTERNAL_SERVICE_TOKEN")
 
 TEMPLATES = [
     {
@@ -116,6 +142,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+SIMPLE_JWT = {
+    "ALGORITHM": "RS256",
+    "SIGNING_KEY": "",
+    "VERIFYING_KEY": os.getenv("JWT_PUBLIC_KEY", "").replace("\\n", "\n"),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "TOKEN_TYPE_CLAIM": "token_type",   # rejette les refresh tokens utilisés comme access
+}
 
 REST_FRAMEWORK = {
     # 1. Politique de permissions par défaut
@@ -130,7 +166,7 @@ REST_FRAMEWORK = {
     
     # 3. Authentification (exemple avec l'authentification par token)
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication'
+        'orders_app.utils.authentication.JWTAuthenticationWithoutDB',
     ],
     
     # 4. Filtrage (pour utiliser django-filter)
@@ -160,4 +196,4 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # Dossier où collectstatic va tout rassembler
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = os.path.join(BASE_DIR.parent, 'staticfiles')

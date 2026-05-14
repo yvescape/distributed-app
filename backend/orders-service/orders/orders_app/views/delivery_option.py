@@ -1,34 +1,27 @@
-from rest_framework import generics, permissions
+# views/delivery_option.py
+from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.permissions import AllowAny
 from ..models.delivery_option import DeliveryOption
 from ..serializers.delivery_option import DeliveryOptionSerializer
 
 
-class DeliveryOptionListView(generics.ListAPIView):
+class DeliveryOptionListView(ListAPIView):
+    """Liste des options de livraison actives."""
 
-    queryset = DeliveryOption.objects.filter(is_active=True).order_by("position")
     serializer_class = DeliveryOptionSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
 
-class DeliveryOptionDetailView(generics.RetrieveAPIView):
+    def get_queryset(self):
+        return DeliveryOption.objects.filter(
+            is_active=True
+        ).order_by("position")
 
-    queryset = DeliveryOption.objects.filter(is_active=True)
+
+class DeliveryOptionDetailView(RetrieveAPIView):
+    """Détail d'une option de livraison."""
+
     serializer_class = DeliveryOptionSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
 
-class DeliveryOptionCreateView(generics.CreateAPIView):
-
-    queryset = DeliveryOption.objects.all()
-    serializer_class = DeliveryOptionSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-class DeliveryOptionUpdateView(generics.UpdateAPIView):
-
-    queryset = DeliveryOption.objects.all()
-    serializer_class = DeliveryOptionSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-class DeliveryOptionDeleteView(generics.DestroyAPIView):
-
-    queryset = DeliveryOption.objects.all()
-    serializer_class = DeliveryOptionSerializer
-    permission_classes = [permissions.IsAdminUser]
+    def get_queryset(self):
+        return DeliveryOption.objects.filter(is_active=True)

@@ -1,10 +1,8 @@
 # ── Stage 1 : Builder ────────────────────────────────────────────────
-FROM python:3.12-slim AS builder
+FROM python:3.12-alpine AS builder
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache gcc musl-dev postgresql-dev
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -14,26 +12,22 @@ RUN pip install --upgrade pip --no-cache-dir \
     && pip install --no-cache-dir -r requirements.txt
 
 # ── Stage 2 : Runtime ────────────────────────────────────────────────
-FROM python:3.12-slim
+FROM python:3.12-alpine
+RUN apk upgrade --no-cache
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache libpq
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN useradd -m -u 1001 django
+RUN adduser -D -u 1001 django
 
-# Copier le code et rendre entrypoint exécutable AVANT USER django
 COPY --chown=django:django entrypoint.sh .
 COPY --chown=django:django orders/ ./orders/
 
 RUN chmod +x ./entrypoint.sh
 
-# ── settings route : orders/settings/base.py ─────────────────────────
-# DJANGO_SETTINGS_MODULE = orders.settings.base
 RUN DJANGO_SETTINGS_MODULE=orders.settings.base \
     SECRET_KEY=build-only-dummy-key \
     ALLOWED_HOSTS=localhost \

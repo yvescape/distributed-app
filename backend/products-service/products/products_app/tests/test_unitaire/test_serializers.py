@@ -12,7 +12,7 @@ class TestProductCardSerializer:
     def test_expected_fields(self, db):
         product = ProductFactory()
         data = ProductCardSerializer(product).data
-        expected = {"id", "name", "category", "price", "size", "image", "notes", "badge"}
+        expected = {"id", "name", "category", "price", "size", "image", "notes", "badge", "family", "gender"}
         assert set(data.keys()) == expected
 
     def test_notes_combines_all_three(self, db):
@@ -23,7 +23,7 @@ class TestProductCardSerializer:
         )
         data = ProductCardSerializer(product).data
         assert data["notes"] == "Bergamote · Jasmin · Musc"
-
+    
     def test_notes_skips_empty_parts(self, db):
         product = ProductFactory(notes_top="Citron", notes_heart="", notes_base="Santal")
         data = ProductCardSerializer(product).data
@@ -50,11 +50,10 @@ class TestProductCardSerializer:
         assert data["badge"] == "Nouveau"
 
     def test_detail_fields_not_in_card(self, db):
-        """Les champs détail ne doivent pas apparaître dans la card."""
         product = ProductFactory()
         data = ProductCardSerializer(product).data
         hidden = {"notes_top", "notes_heart", "notes_base", "composition", "advice",
-                  "family", "gender", "created_at", "updated_at"}
+                "created_at", "updated_at"}
         assert not hidden.intersection(set(data.keys()))
 
     def test_price_is_string_decimal(self, db):

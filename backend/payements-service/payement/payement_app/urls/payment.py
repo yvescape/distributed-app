@@ -5,7 +5,7 @@ from ..views.payment import PaymentCreateView, PaymentDetailView, PaymentListVie
 urlpatterns = [
 
     path(
-        "",
+        "create/",
         PaymentCreateView.as_view(),
         name="payment-create"
     ),

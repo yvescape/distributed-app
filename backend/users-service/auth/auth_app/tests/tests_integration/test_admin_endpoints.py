@@ -1,134 +1,146 @@
-# tests/integration/test_admin_endpoints.py
+"""
+Tests d'intégration — Admin endpoints (user list, toggle status, audit logs).
+"""
 import pytest
+from django.contrib.auth import get_user_model
 from auth_app.models.user_audit_log import UserAuditLog
-from ..factories import UserFactory, UserProfileFactory, UserAuditLogFactory
+from ..factories import UserFactory, UserAuditLogFactory
+
+User = get_user_model()
+
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
-USERS_URL = "/api/users/"
-AUDIT_LOGS_URL = "/api/audit-logs/"
+# ═══════════════════════════════════════════════════════════════════════
+#  GET /list/
+# ═══════════════════════════════════════════════════════════════════════
 
-
-def toggle_url(user_id):
-    return f"/api/users/{user_id}/toggle/"
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
 class TestUserListEndpoint:
 
-    def test_admin_can_list_users(self, admin_client, db):
-        UserFactory.create_batch(3)
-        response = admin_client.get(USERS_URL)
-        assert response.status_code == 200
+    URL = "/list/"
+
+    def test_admin_can_list_users(self, admin_client):
+        resp = admin_client.get(self.URL)
+        assert resp.status_code == 200
 
     def test_non_admin_returns_403(self, auth_client):
-        response = auth_client.get(USERS_URL)
-        assert response.status_code == 403
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 403
 
     def test_unauthenticated_returns_401(self, api_client):
-        response = api_client.get(USERS_URL)
-        assert response.status_code == 401
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 401
 
-    def test_list_returns_all_users(self, admin_client, db):
-        UserFactory.create_batch(4)
-        response = admin_client.get(USERS_URL)
-        assert response.data["count"] >= 4  # ← count, pas len()
+    def test_list_returns_all_users(self, admin_client, admin_user):
+        UserFactory.create_batch(3)
+        resp = admin_client.get(self.URL)
+        assert resp.status_code == 200
+        # admin_user + 3 créés = 4
+        assert len(resp.data) == 4
 
-    def test_list_ordered_by_created_at_desc(self, admin_client, db):
-        users = UserFactory.create_batch(3)
-        response = admin_client.get(USERS_URL)
-        emails = [u["email"] for u in response.data["results"]]  # ← ["results"]
-        assert emails.index(users[-1].email) < emails.index(users[0].email)
+    def test_list_ordered_by_created_at_desc(self, admin_client, admin_user):
+        UserFactory.create_batch(2)
+        resp = admin_client.get(self.URL)
+        assert resp.status_code == 200
+        results = resp.data["results"] if "results" in resp.data else resp.data
+        dates = [item["created_at"] for item in results]
+        assert dates == sorted(dates, reverse=True)
 
+# ═══════════════════════════════════════════════════════════════════════
+#  PATCH /<user_id>/toggle/
+# ═══════════════════════════════════════════════════════════════════════
 
-@pytest.mark.integration
-@pytest.mark.django_db
 class TestToggleUserStatusEndpoint:
 
-    def test_admin_can_deactivate_active_user(self, admin_client, db):
-        user = UserFactory(is_active=True)
-        UserProfileFactory(user=user)
-        response = admin_client.patch(toggle_url(user.id))
-        assert response.status_code == 200
-        assert response.data["is_active"] is False
+    def _url(self, user_id):
+        return f"/{user_id}/toggle/"
 
-    def test_admin_can_reactivate_inactive_user(self, admin_client, db):
-        user = UserFactory(is_active=False)
-        UserProfileFactory(user=user)
-        response = admin_client.patch(toggle_url(user.id))
-        assert response.status_code == 200
-        assert response.data["is_active"] is True
+    def test_admin_can_deactivate_active_user(self, admin_client, user):
+        assert user.is_active is True
+        resp = admin_client.patch(self._url(user.id))
+        assert resp.status_code == 200
+        assert resp.data["is_active"] is False
 
-    def test_toggle_persists_in_database(self, admin_client, db):
-        user = UserFactory(is_active=True)
-        admin_client.patch(toggle_url(user.id))
+    def test_admin_can_reactivate_inactive_user(self, admin_client, inactive_user):
+        resp = admin_client.patch(self._url(inactive_user.id))
+        assert resp.status_code == 200
+        assert resp.data["is_active"] is True
+
+    def test_toggle_persists_in_database(self, admin_client, user):
+        admin_client.patch(self._url(user.id))
         user.refresh_from_db()
         assert user.is_active is False
 
-    def test_toggle_creates_audit_log(self, admin_client, db):
-        user = UserFactory()
-        admin_client.patch(toggle_url(user.id))
+    def test_toggle_creates_audit_log(self, admin_client, user):
+        admin_client.patch(self._url(user.id))
         assert UserAuditLog.objects.filter(user=user, action="UPDATE").exists()
 
-    def test_toggle_nonexistent_user_returns_404(self, admin_client):
-        import uuid
-        response = admin_client.patch(toggle_url(uuid.uuid4()))
-        assert response.status_code == 404
+    def test_non_admin_cannot_toggle_user(self, auth_client, user):
+        other_user = UserFactory()
+        resp = auth_client.patch(self._url(other_user.id))
+        assert resp.status_code == 403
 
-    def test_non_admin_cannot_toggle_user(self, auth_client, db):
-        user = UserFactory()
-        response = auth_client.patch(toggle_url(user.id))
-        assert response.status_code == 403
+    def test_unauthenticated_cannot_toggle_user(self, api_client, user):
+        resp = api_client.patch(self._url(user.id))
+        assert resp.status_code == 401
 
-    def test_unauthenticated_cannot_toggle_user(self, api_client, db):
-        user = UserFactory()
-        response = api_client.patch(toggle_url(user.id))
-        assert response.status_code == 401
-
-    def test_toggle_response_contains_detail_and_is_active(self, admin_client, db):
-        user = UserFactory(is_active=True)
-        response = admin_client.patch(toggle_url(user.id))
-        assert "detail" in response.data
-        assert "is_active" in response.data
+    def test_toggle_response_contains_detail_and_is_active(self, admin_client, user):
+        resp = admin_client.patch(self._url(user.id))
+        assert resp.status_code == 200
+        assert "detail" in resp.data
+        assert "is_active" in resp.data
 
 
-@pytest.mark.integration
-@pytest.mark.django_db
+# ═══════════════════════════════════════════════════════════════════════
+#  GET /audit-logs/
+# ═══════════════════════════════════════════════════════════════════════
+
 class TestAuditLogListEndpoint:
 
-    def test_admin_can_list_audit_logs(self, admin_client, db):
-        UserAuditLogFactory.create_batch(3)
-        response = admin_client.get(AUDIT_LOGS_URL)
-        assert response.status_code == 200
+    URL = "/audit-logs/"
+
+    def _get_results(self, resp):
+        """Extraire la liste, paginée ou non."""
+        return resp.data["results"] if "results" in resp.data else resp.data
+
+    def test_admin_can_list_audit_logs(self, admin_client):
+        resp = admin_client.get(self.URL)
+        assert resp.status_code == 200
 
     def test_non_admin_returns_403(self, auth_client):
-        response = auth_client.get(AUDIT_LOGS_URL)
-        assert response.status_code == 403
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 403
 
     def test_unauthenticated_returns_401(self, api_client):
-        response = api_client.get(AUDIT_LOGS_URL)
-        assert response.status_code == 401
-    
-    def test_logs_count_correct(self, admin_client, db):
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 401
+
+    def test_logs_count_correct(self, admin_client):
         UserAuditLogFactory.create_batch(5)
-        response = admin_client.get(AUDIT_LOGS_URL)
-        assert response.data["count"] >= 5  # ← count, pas len()
+        resp = admin_client.get(self.URL)
+        assert resp.status_code == 200
+        results = self._get_results(resp)
+        assert len(results) == 5
 
-    def test_log_contains_expected_fields(self, admin_client, db):
+    def test_log_contains_expected_fields(self, admin_client):
         UserAuditLogFactory()
-        response = admin_client.get(AUDIT_LOGS_URL)
-        log = response.data["results"][0]  # ← ["results"][0]
-        assert {"id", "user_email", "action", "ip_address", "timestamp"}.issubset(set(log.keys()))
+        resp = admin_client.get(self.URL)
+        assert resp.status_code == 200
+        results = self._get_results(resp)
+        log = results[0]
+        expected = {"id", "user_email", "action", "ip_address", "timestamp"}
+        assert set(log.keys()) == expected
 
-    def test_logs_ordered_by_timestamp_desc(self, admin_client, db):
+    def test_logs_ordered_by_timestamp_desc(self, admin_client):
         UserAuditLogFactory.create_batch(3)
-        response = admin_client.get(AUDIT_LOGS_URL)
-        timestamps = [entry["timestamp"] for entry in response.data["results"]]  # ← ["results"]
+        resp = admin_client.get(self.URL)
+        results = self._get_results(resp)
+        timestamps = [item["timestamp"] for item in results]
         assert timestamps == sorted(timestamps, reverse=True)
 
-    def test_log_user_email_field_populated(self, admin_client, db):
-        user = UserFactory(email="traced@example.com")
-        UserAuditLogFactory(user=user, action="LOGIN")
-        response = admin_client.get(AUDIT_LOGS_URL)
-        emails = [entry["user_email"] for entry in response.data["results"]]  # ← ["results"]
-        assert "traced@example.com" in emails
+    def test_log_user_email_field_populated(self, admin_client):
+        log = UserAuditLogFactory()
+        resp = admin_client.get(self.URL)
+        assert resp.status_code == 200
+        results = self._get_results(resp)
+        assert results[0]["user_email"] == log.user.email

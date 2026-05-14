@@ -1,6 +1,5 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from ..models.user_profile import UserProfile
 from ..models.user_audit_log import UserAuditLog
 
 User = get_user_model()
@@ -37,9 +36,6 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=password,
             **validated_data
         )
-
-        # Créer profil automatiquement
-        UserProfile.objects.create(user=user)
 
         # Log audit
         UserAuditLog.objects.create(

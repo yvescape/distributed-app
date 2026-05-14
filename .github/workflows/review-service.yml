@@ -1,0 +1,109 @@
+name: Review Service — CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/review-service/**"
+      - ".github/workflows/review-service.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/review-service/**"
+
+jobs:
+  # ── Job 1 : Tests unitaires & intégration ────────────────────────────
+  test:
+    name: Tests unitaires & intégration
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install & Test
+        working-directory: backend/review-service
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip --quiet
+          pip install -r requirements.txt --quiet
+          cd interation
+          pytest --tb=short -q
+
+  # ── Job 2 : Build → Scan → Push ──────────────────────────────────────
+  build:
+    name: Build & Push
+    runs-on: self-hosted
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build image
+        working-directory: backend/review-service
+        run: |
+          docker build \
+            --tag capedev/review-service:${{ github.sha }} \
+            --tag capedev/review-service:latest \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f dockerfile .
+
+      - name: Scan Trivy (bloquant)
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format table \
+            capedev/review-service:${{ github.sha }}
+
+      - name: Push Docker Hub
+        run: |
+          docker push capedev/review-service:${{ github.sha }}
+          docker push capedev/review-service:latest
+
+  # ── Job 3 : Deploy via GitOps ─────────────────────────────────────────
+  deploy:
+    name: Deploy via GitOps
+    runs-on: self-hosted
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout gitops-repo
+        uses: actions/checkout@v5
+        with:
+          repository: yvescape/gitops-repo
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops-repo
+
+      - name: Update image tag in gitops-repo
+        run: |
+          sed -i "s|capedev/review-service:.*|capedev/review-service:${{ github.sha }}|" \
+            gitops-repo/apps/production/review-service/deployment.yaml
+
+      - name: Commit and push to gitops-repo
+        run: |
+          cd gitops-repo
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git add apps/production/review-service/deployment.yaml
+          git commit -m "deploy: review-service ${{ github.sha }}"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "ArgoCD va détecter le changement et synchroniser automatiquement."
+          echo "Image déployée : capedev/review-service:${{ github.sha }}"

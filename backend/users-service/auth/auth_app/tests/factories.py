@@ -3,7 +3,6 @@ import uuid
 import factory
 from factory.django import DjangoModelFactory
 from django.contrib.auth import get_user_model
-from auth_app.models.user_profile import UserProfile
 from auth_app.models.user_audit_log import UserAuditLog
 
 User = get_user_model()
@@ -12,7 +11,7 @@ User = get_user_model()
 class UserFactory(DjangoModelFactory):
     class Meta:
         model = User
-        skip_postgeneration_save = True  # on gère le save manuellement ci-dessous
+        skip_postgeneration_save = True
 
     id = factory.LazyFunction(uuid.uuid4)
     email = factory.Sequence(lambda n: f"user{n}@example.com")
@@ -28,19 +27,7 @@ class UserFactory(DjangoModelFactory):
         raw = extracted or "StrongPass123!"
         obj.set_password(raw)
         if create:
-            obj.save(update_fields=["password"])  # save uniquement le champ password
-
-
-class UserProfileFactory(DjangoModelFactory):
-    class Meta:
-        model = UserProfile
-        django_get_or_create = ("user",)
-
-    user = factory.SubFactory(UserFactory)
-    phone_number = factory.Faker("phone_number")
-    bio = factory.Faker("sentence")
-    country = factory.Faker("country")
-    avatar = factory.LazyAttribute(lambda o: f"https://cdn.example.com/avatars/{o.user.username}.jpg")
+            obj.save(update_fields=["password"])
 
 
 class UserAuditLogFactory(DjangoModelFactory):

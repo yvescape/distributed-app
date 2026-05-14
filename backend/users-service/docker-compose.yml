@@ -23,9 +23,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: capedev/auth-service:latest
+    container_name: users
     env_file:
       - .env.docker
-    # ── Fix 4 : DB_HOST garanti vers le service postgres ──────────────
     environment:
       DB_HOST: postgres
       DJANGO_SETTINGS_MODULE: config.settings.base
@@ -38,9 +39,13 @@ services:
       - ./auth:/app/auth
     networks:
       - auth_network
+      - microservices-net
 
 networks:
   auth_network:
+    driver: bridge
+  microservices-net:
+    name: microservices-net
     driver: bridge
 
 volumes:

@@ -12,32 +12,31 @@ class Order(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # utilisateur (si connecté)
     user_id = models.UUIDField(
         null=True,
         blank=True,
-        help_text="ID utilisateur provenant du users-service"
+        help_text="ID utilisateur provenant du auth-service",
     )
 
-    # informations client (pour invité ou snapshot utilisateur)
-    customer_name = models.CharField(max_length=150)
-    customer_email = models.EmailField()
-    customer_phone = models.CharField(max_length=30)
+    session_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="ID session pour les utilisateurs non connectés",
+    )
 
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default="pending"
-    )
-
-    total_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0
+        default="pending",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def subtotal(self):
+        """Total des items sans la livraison."""
+        return sum(item.total for item in self.items.all())
 
     def __str__(self):
         return f"Order {self.id}"

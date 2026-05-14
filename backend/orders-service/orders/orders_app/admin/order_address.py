@@ -1,24 +1,21 @@
+# admin/order_address.py
 from django.contrib import admin
 from ..models.order_address import OrderAddress
 
 
-# -----------------------------
-# Address Admin
-# -----------------------------
 @admin.register(OrderAddress)
 class OrderAddressAdmin(admin.ModelAdmin):
 
     list_display = (
         "id",
         "order",
+        "first_name",
+        "last_name",
+        "email",
+        "mobile",
         "city",
-        "postal_code",
     )
 
-    search_fields = (
-        "city",
-        "postal_code",
-        "order__id",
-    )
+    search_fields = ("first_name", "last_name", "email", "order__id")
 
     readonly_fields = ("id",)

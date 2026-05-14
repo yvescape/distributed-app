@@ -1,13 +1,11 @@
+# serializers/order_item.py
 from rest_framework import serializers
-from ..models.order import Order
 from ..models.order_item import OrderItem
-from ..models.order_address import OrderAddress
 
 
-# -----------------------------
-# Order Item
-# -----------------------------
 class OrderItemSerializer(serializers.ModelSerializer):
+
+    session_id = serializers.UUIDField(write_only=True, required=False)
 
     class Meta:
         model = OrderItem
@@ -15,8 +13,18 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "id",
             "product_id",
             "product_name",
+            "product_image",
+            "product_size",
             "price",
             "quantity",
-            "subtotal",
+            "total",
+            "session_id",
         ]
-        read_only_fields = ["id", "subtotal"]
+        read_only_fields = [
+            "id",
+            "product_name",
+            "product_image",
+            "product_size",
+            "price",
+            "total",
+        ]

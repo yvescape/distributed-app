@@ -1,0 +1,52 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: interation_db
+      POSTGRES_USER: interation_user
+      POSTGRES_PASSWORD: pass_interation
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Décommentez pour déboguer depuis votre machine
+    # ports:
+    #   - "5438:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U interation_user -d interation_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - interation_network
+
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: capedev/interation-service:latest
+    container_name: interation
+    env_file:
+      - .env.docker
+    environment:
+      DB_HOST: postgres
+      DJANGO_SETTINGS_MODULE: interation.settings.base
+    ports:
+      - "8005:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./interation:/app/interation
+    networks:
+      - interation_network
+      - microservices-net
+
+networks:
+  interation_network:
+    driver: bridge
+  microservices-net:
+    name: microservices-net
+    driver: bridge
+
+volumes:
+  postgres_data:

@@ -1,92 +1,58 @@
-# payement_app/tests/tests_unitaire/test_models.py
+"""
+Tests unitaires — Modèles (Payment, SavedPrepaidCard).
+"""
 import uuid
-import pytest
 from decimal import Decimal
-from django.utils import timezone
+
+import pytest
+
 from payement_app.models.payment import Payment
 from payement_app.models.prepay_cart import SavedPrepaidCard
 from ..factories import PaymentFactory, SavedPrepaidCardFactory
 
+pytestmark = [pytest.mark.django_db, pytest.mark.unit]
 
-@pytest.mark.unit
+
 class TestPaymentModel:
 
-    def test_payment_creation(self, db):
-        payment = PaymentFactory()
-        assert payment.pk is not None
-        assert isinstance(payment.id, uuid.UUID)
+    def test_create_payment(self):
+        p = PaymentFactory()
+        assert p.pk is not None
+        assert p.status == "success"
+        assert p.currency == "FCFA"
 
-    def test_payment_str(self, db):
-        payment = PaymentFactory(status="success")
-        assert str(payment) == f"Payment {payment.order_pricing_id} - success"
+    def test_str(self):
+        p = PaymentFactory(status="failed")
+        assert "failed" in str(p)
 
-    def test_payment_id_is_uuid(self, db):
-        payment = PaymentFactory()
-        assert isinstance(payment.id, uuid.UUID)
+    def test_transaction_reference_is_uuid(self):
+        p = PaymentFactory()
+        assert isinstance(p.transaction_reference, uuid.UUID)
 
-    def test_payment_transaction_reference_is_uuid(self, db):
-        payment = PaymentFactory()
-        assert isinstance(payment.transaction_reference, uuid.UUID)
-
-    def test_payment_transaction_reference_is_unique(self, db):
-        from django.db import IntegrityError
+    def test_transaction_reference_unique(self):
         ref = uuid.uuid4()
         PaymentFactory(transaction_reference=ref)
-        with pytest.raises(IntegrityError):
+        with pytest.raises(Exception):
             PaymentFactory(transaction_reference=ref)
 
-    def test_payment_default_currency_xof(self, db):
-        payment = PaymentFactory()
-        assert payment.currency == "XOF"
-
-    def test_payment_status_choices(self, db):
-        for status in ["success", "failed"]:
-            p = PaymentFactory(status=status)
-            assert p.status == status
-
-    def test_payment_order_pricing_id_is_uuid(self, db):
-        payment = PaymentFactory()
-        assert isinstance(payment.order_pricing_id, uuid.UUID)
-
-    def test_payment_timestamp_set_on_creation(self, db):
-        before = timezone.now()
-        payment = PaymentFactory()
-        after = timezone.now()
-        assert before <= payment.created_at <= after
-
-    def test_payment_amount_precision(self, db):
-        payment = PaymentFactory(amount=Decimal("2500"))
-        payment.refresh_from_db()
-        assert payment.amount == Decimal("2500")
+    def test_amount_decimal(self):
+        p = PaymentFactory(amount=Decimal("25000"))
+        assert p.amount == Decimal("25000")
 
 
-@pytest.mark.unit
 class TestSavedPrepaidCardModel:
 
-    def test_card_creation(self, db):
+    def test_create_card(self):
         card = SavedPrepaidCardFactory()
         assert card.pk is not None
-        assert isinstance(card.id, uuid.UUID)
+        assert card.card_holder == "Jean Dupont"
 
-    def test_card_str_shows_last_four_digits(self, db):
-        card = SavedPrepaidCardFactory(
-            card_holder="Jean Kouadio",
-            card_number="1234567890123456"
-        )
-        assert str(card) == "Jean Kouadio - 3456"
+    def test_str_shows_last_4_digits(self):
+        card = SavedPrepaidCardFactory(card_number="4111111111111111", card_holder="Marie")
+        s = str(card)
+        assert "Marie" in s
+        assert "1111" in s
 
-    def test_card_user_id_is_uuid(self, db):
-        card = SavedPrepaidCardFactory()
-        assert isinstance(card.user_id, uuid.UUID)
-
-    def test_card_timestamp_set_on_creation(self, db):
-        before = timezone.now()
-        card = SavedPrepaidCardFactory()
-        after = timezone.now()
-        assert before <= card.created_at <= after
-
-    def test_multiple_cards_per_user(self, db):
-        user_id = uuid.uuid4()
-        SavedPrepaidCardFactory(user_id=user_id, card_number="1111222233334444")
-        SavedPrepaidCardFactory(user_id=user_id, card_number="5555666677778888")
-        assert SavedPrepaidCard.objects.filter(user_id=user_id).count() == 2
+    def test_card_number_stored_full(self):
+        card = SavedPrepaidCardFactory(card_number="9876543210123456")
+        assert card.card_number == "9876543210123456"

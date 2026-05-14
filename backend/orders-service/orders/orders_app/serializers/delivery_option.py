@@ -1,3 +1,4 @@
+# serializers/delivery_option.py
 from rest_framework import serializers
 from ..models.delivery_option import DeliveryOption
 
@@ -14,7 +15,5 @@ class DeliveryOptionSerializer(serializers.ModelSerializer):
             "currency",
             "position",
             "is_default",
-            "is_active",
-            "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id"]

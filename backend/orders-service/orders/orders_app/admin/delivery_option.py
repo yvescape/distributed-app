@@ -1,3 +1,4 @@
+# admin/delivery_option.py
 from django.contrib import admin
 from ..models.delivery_option import DeliveryOption
 
@@ -6,33 +7,19 @@ from ..models.delivery_option import DeliveryOption
 class DeliveryOptionAdmin(admin.ModelAdmin):
 
     list_display = (
+        "id",
         "name",
-        "description",
         "amount",
         "currency",
         "position",
-        "is_default",
-        "is_active",
-        "created_at",
-    )
-
-    list_filter = (
         "is_active",
         "is_default",
-        "currency",
     )
 
-    search_fields = (
-        "name",
-        "description",
-    )
+    list_filter = ("is_active", "is_default")
+
+    search_fields = ("name",)
+
+    readonly_fields = ("id", "created_at")
 
     ordering = ("position",)
-
-    list_editable = (
-        "position",
-        "is_active",
-        "is_default",
-    )
-
-    readonly_fields = ("created_at",)

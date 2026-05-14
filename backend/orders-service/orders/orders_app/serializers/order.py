@@ -1,91 +1,31 @@
+# serializers/order.py
 from rest_framework import serializers
 from ..models.order import Order
-from ..models.order_item import OrderItem
-from ..models.order_address import OrderAddress
 from .order_item import OrderItemSerializer
 from .order_address import OrderAddressSerializer
+from .order_pricing import OrderPricingSerializer
 
 
-# -----------------------------
-# Create Order
-# -----------------------------
-class OrderCreateSerializer(serializers.ModelSerializer):
-
-    items = OrderItemSerializer(many=True)
-    address = OrderAddressSerializer()
-
-    class Meta:
-        model = Order
-        fields = ["id", "user_id", "customer_name", "customer_email",
-                  "customer_phone", "items", "address"]
-        read_only_fields = ["id"]
-
-    def validate_items(self, value):
-        if len(value) == 0:
-            raise serializers.ValidationError("La commande doit contenir au moins un article.")
-        return value
-    
-    def create(self, validated_data):
-
-        items_data = validated_data.pop("items")
-        address_data = validated_data.pop("address")
-
-        order = Order.objects.create(**validated_data)
-
-        total = 0
-
-        for item in items_data:
-
-            subtotal = item["price"] * item["quantity"]
-
-            OrderItem.objects.create(
-                order=order,
-                subtotal=subtotal,
-                **item
-            )
-
-            total += subtotal
-
-        OrderAddress.objects.create(
-            order=order,
-            **address_data
-        )
-
-        order.total_amount = total
-        order.save()
-
-        return order
-
-
-# -----------------------------
-# Order Detail
-# -----------------------------
 class OrderDetailSerializer(serializers.ModelSerializer):
 
     items = OrderItemSerializer(many=True, read_only=True)
     address = OrderAddressSerializer(read_only=True)
+    pricing = OrderPricingSerializer(read_only=True)
+    subtotal = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
 
     class Meta:
         model = Order
         fields = [
             "id",
             "user_id",
-            "customer_name",
-            "customer_email",
-            "customer_phone",
+            "session_id",
             "status",
-            "total_amount",
+            "subtotal",
             "items",
             "address",
+            "pricing",
             "created_at",
+            "updated_at",
         ]
-
-
-# -----------------------------
-# Order Post Payement
-# -----------------------------
-class OrderStatusUpdateSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Order
-        fields = ["status"]

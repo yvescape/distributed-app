@@ -1,3 +1,121 @@
+# ⚠️  DEPRECATED — Ne plus utiliser ce fichier directement
+# Ces manifests sont maintenant gérés par GitOps via ArgoCD.
+# Application ArgoCD : infrastructure-ingress
+# Source de vérité  : gitops-repo/infrastructure/ingress-routes/distributed-app.yaml
+# Déprécié le       : 2026-05-14
+#
+# Pour modifier le routing, éditer le fichier dans gitops-repo et faire un git push.
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-auth
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /api/auth
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-orders
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /api/orders
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-payments
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /api/payments
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-products
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /api/products
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-interation
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /api/interation
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-admin-auth
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /admin/auth
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-admin-products
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /admin/products
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-admin-orders
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /admin/orders
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-admin-payments
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /admin/payments
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-admin-interation
+  namespace: distributed-app
+spec:
+  stripPrefix:
+    prefixes:
+      - /admin/interation
+
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -10,6 +128,8 @@ spec:
   routes:
     - match: Host(`distributed-app.local`) && PathPrefix(`/api/auth`)
       kind: Rule
+      middlewares:
+        - name: strip-auth
       services:
         - name: auth-service
           port: 8000
@@ -26,6 +146,8 @@ spec:
   routes:
     - match: Host(`distributed-app.local`) && PathPrefix(`/api/orders`)
       kind: Rule
+      middlewares:
+        - name: strip-orders
       services:
         - name: orders-service
           port: 8000
@@ -42,6 +164,8 @@ spec:
   routes:
     - match: Host(`distributed-app.local`) && PathPrefix(`/api/payments`)
       kind: Rule
+      middlewares:
+        - name: strip-payments
       services:
         - name: payment-service
           port: 8000
@@ -58,6 +182,132 @@ spec:
   routes:
     - match: Host(`distributed-app.local`) && PathPrefix(`/api/products`)
       kind: Rule
+      middlewares:
+        - name: strip-products
       services:
         - name: products-service
           port: 8000
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: interation-ingress
+  namespace: distributed-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`distributed-app.local`) && PathPrefix(`/api/interation`)
+      kind: Rule
+      middlewares:
+        - name: strip-interation
+      services:
+        - name: interation-service
+          port: 8000
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin-auth-ingress
+  namespace: distributed-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`distributed-app.local`) && PathPrefix(`/admin/auth`)
+      kind: Rule
+      middlewares:
+        - name: strip-admin-auth
+      services:
+        - name: auth-service
+          port: 8000
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin-products-ingress
+  namespace: distributed-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`distributed-app.local`) && PathPrefix(`/admin/products`)
+      kind: Rule
+      middlewares:
+        - name: strip-admin-products
+      services:
+        - name: products-service
+          port: 8000
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin-orders-ingress
+  namespace: distributed-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`distributed-app.local`) && PathPrefix(`/admin/orders`)
+      kind: Rule
+      middlewares:
+        - name: strip-admin-orders
+      services:
+        - name: orders-service
+          port: 8000
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin-payments-ingress
+  namespace: distributed-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`distributed-app.local`) && PathPrefix(`/admin/payments`)
+      kind: Rule
+      middlewares:
+        - name: strip-admin-payments
+      services:
+        - name: payment-service
+          port: 8000
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin-interation-ingress
+  namespace: distributed-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`distributed-app.local`) && PathPrefix(`/admin/interation`)
+      kind: Rule
+      middlewares:
+        - name: strip-admin-interation
+      services:
+        - name: interation-service
+          port: 8000
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: frontend-ingress
+  namespace: distributed-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`distributed-app.local`)
+      kind: Rule
+      services:
+        - name: frontend
+          port: 3000

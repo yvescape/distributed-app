@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -48,13 +49,16 @@ INSTALLED_APPS = [
     # Packages
     'rest_framework',
     'rest_framework_simplejwt',
+    "corsheaders",
 
     # App
     'products_app.apps.ProductsAppConfig',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -64,6 +68,22 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'products.urls'
+
+# En dev, autorise le frontend
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+USE_X_FORWARDED_HOST = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost",
+    "http://localhost:9001",
+    "http://localhost:9002",
+    "http://localhost:9003",
+    "http://localhost:9004",
+    "http://localhost:9005",
+]
 
 TEMPLATES = [
     {
@@ -116,24 +136,30 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+SIMPLE_JWT = {
+    "ALGORITHM": "RS256",
+    "SIGNING_KEY": "",              # vide ! Ce service ne signe jamais
+    "VERIFYING_KEY": os.getenv("JWT_PUBLIC_KEY", "").replace("\\n", "\n"),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
 
 REST_FRAMEWORK = {
-    # 1. Politique de permissions par défaut
-    # Exemple : Seuls les utilisateurs authentifiés peuvent interagir avec l'API
+    # Par défaut : tout le monde peut accéder
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',
     ],
     
-    # 2. Pagination (pour ne pas surcharger les réponses)
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10, # Nombre d'éléments par page
-    
-    # 3. Authentification (exemple avec l'authentification par token)
+    # On garde JWT pour les vues qui en ont besoin (admin)
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication'
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     
-    # 4. Filtrage (pour utiliser django-filter)
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+    
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
@@ -159,4 +185,4 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # Dossier où collectstatic va tout rassembler
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = os.path.join(BASE_DIR.parent, 'staticfiles')

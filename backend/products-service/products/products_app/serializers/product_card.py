@@ -17,6 +17,8 @@ class ProductCardSerializer(serializers.ModelSerializer):
             "image",
             "notes",
             "badge",
+            "family",
+            "gender"
         ]
 
     def get_notes(self, obj):

@@ -1,12 +1,19 @@
+# views/like.py
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from ..models.like import Like
+from ..services.product_client import product_exists
+
 
 class ToggleLikeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, product_id):
+        if not product_exists(product_id):
+            raise ValidationError({"product_id": "Produit introuvable"})
+
         user_id = request.user.id
 
         like = Like.objects.filter(

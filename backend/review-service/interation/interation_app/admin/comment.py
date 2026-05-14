@@ -10,6 +10,7 @@ class CommentAdmin(admin.ModelAdmin):
         "id",
         "short_content",
         "user_id",
+        "user_email",
         "product_id",
         "created_at",
     )

@@ -7,7 +7,6 @@ from ..models.like import Like
 class LikeAdmin(admin.ModelAdmin):
 
     list_display = (
-        "id",
         "user_id",
         "product_id",
         "created_at",
@@ -23,5 +22,5 @@ class LikeAdmin(admin.ModelAdmin):
     )
 
     ordering = ("-created_at",)
-    readonly_fields = ("id", "created_at")
+    readonly_fields = ("created_at",)
     list_per_page = 20

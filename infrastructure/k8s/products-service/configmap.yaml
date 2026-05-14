@@ -5,12 +5,10 @@ metadata:
   namespace: distributed-app
 data:
   DJANGO_SETTINGS_MODULE: "products.settings.base"
-
   DB_ENGINE: "django.db.backends.postgresql"
-  DB_HOST: "postgres-products"                # ← nom du Service postgres
+  DB_HOST: "postgres-products"
   DB_NAME: "product_db"
   DB_PORT: "5432"
   DB_USER: "product_user"
-
   ALLOWED_HOSTS: "*"
   DEBUG: "False"

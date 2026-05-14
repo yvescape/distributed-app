@@ -44,11 +44,8 @@ class DeliveryOption(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-
-        # s'assurer qu'une seule option est par défaut
         if self.is_default:
-            DeliveryOption.objects.filter(is_default=True).update(is_default=False)
-
+            DeliveryOption.objects.filter(is_default=True).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
     def __str__(self):

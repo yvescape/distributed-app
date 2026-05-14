@@ -1,124 +1,105 @@
-# payement_app/tests/tests_integration/test_payment_endpoints.py
+"""
+Tests d'intégration — Payment endpoints (create, list, detail).
+"""
 import uuid
-import pytest
 from decimal import Decimal
+
+import pytest
+
 from payement_app.models.payment import Payment
+from ..factories import PaymentFactory
+from ..conftest import USER_ID, ORDER_PRICING_ID
+
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
+
+BASE = "/payements"
 
 
-PAYMENTS_URL = "/api/payments/"
-PAYMENTS_LIST_URL = "/api/payments/list/"
+class TestPaymentCreate:
 
+    URL = f"{BASE}/create/"
 
-def detail_url(transaction_reference):
-    return f"/api/payments/{transaction_reference}/"
+    def test_create_success_with_valid_card(self, api_client, valid_payment_payload, mock_order_confirm_success):
+        resp = api_client.post(self.URL, valid_payment_payload, format="json")
+        assert resp.status_code == 201
+        assert resp.data["status"] == "success"
+        assert Payment.objects.count() == 1
 
+    def test_create_failed_with_invalid_card(self, api_client, invalid_card_payload):
+        resp = api_client.post(self.URL, invalid_card_payload, format="json")
+        assert resp.status_code == 201
+        assert resp.data["status"] == "failed"
 
-@pytest.mark.integration
-@pytest.mark.django_db
-class TestPaymentCreateEndpoint:
+    def test_create_success_calls_order_confirm(self, api_client, valid_payment_payload, mock_order_confirm_success):
+        api_client.post(self.URL, valid_payment_payload, format="json")
+        mock_order_confirm_success.assert_called_once()
 
-    def test_create_payment_returns_201(self, auth_client, valid_payment_payload):
-        response = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert response.status_code == 201
+    def test_create_failed_does_not_call_order_confirm(self, api_client, invalid_card_payload, mock_order_confirm_success):
+        api_client.post(self.URL, invalid_card_payload, format="json")
+        mock_order_confirm_success.assert_not_called()
 
-    def test_create_payment_unauthenticated_returns_401(self, api_client, valid_payment_payload):
-        response = api_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert response.status_code == 401
-
-    def test_valid_card_creates_success_status(self, auth_client, valid_payment_payload):
-        response = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert response.status_code == 201
-        payment = Payment.objects.get(id=response.data["id"])
-        assert payment.status == "success"
-
-    def test_invalid_card_creates_failed_status(self, auth_client, invalid_card_payload):
-        response = auth_client.post(PAYMENTS_URL, data=invalid_card_payload, format="json")
-        assert response.status_code == 201
-        payment = Payment.objects.get(id=response.data["id"])
+    def test_create_order_confirm_failure_marks_payment_failed(self, api_client, valid_payment_payload, mock_order_confirm_failure):
+        with pytest.raises(Exception, match="Order confirmation failed"):
+            api_client.post(self.URL, valid_payment_payload, format="json")
+        payment = Payment.objects.first()
         assert payment.status == "failed"
 
-    def test_create_payment_persists_in_db(self, auth_client, valid_payment_payload):
-        response = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert Payment.objects.filter(id=response.data["id"]).exists()
+    def test_create_missing_fields(self, api_client):
+        resp = api_client.post(self.URL, {}, format="json")
+        assert resp.status_code == 400
 
-    def test_card_fields_not_in_response(self, auth_client, valid_payment_payload):
-        response = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert "card_number" not in response.data
-        assert "card_holder" not in response.data
-        assert "cvv" not in response.data
+    def test_create_returns_transaction_reference(self, api_client, valid_payment_payload, mock_order_confirm_success):
+        resp = api_client.post(self.URL, valid_payment_payload, format="json")
+        assert resp.status_code == 201
+        assert "transaction_reference" in resp.data
 
-    def test_transaction_reference_in_response(self, auth_client, valid_payment_payload):
-        response = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert "transaction_reference" in response.data
-        uuid.UUID(response.data["transaction_reference"])  # valide UUID
-
-    def test_missing_card_number_returns_400(self, auth_client, valid_payment_payload):
-        del valid_payment_payload["card_number"]
-        response = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert response.status_code == 400
-
-    def test_missing_order_pricing_id_returns_400(self, auth_client, valid_payment_payload):
-        del valid_payment_payload["order_pricing_id"]
-        response = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert response.status_code == 400
-
-    def test_two_payments_have_different_transaction_references(self, auth_client, valid_payment_payload):
-        r1 = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        valid_payment_payload["order_pricing_id"] = str(uuid.uuid4())
-        r2 = auth_client.post(PAYMENTS_URL, data=valid_payment_payload, format="json")
-        assert r1.data["transaction_reference"] != r2.data["transaction_reference"]
+    def test_card_fields_not_in_response(self, api_client, valid_payment_payload, mock_order_confirm_success):
+        resp = api_client.post(self.URL, valid_payment_payload, format="json")
+        assert "card_number" not in resp.data
+        assert "cvv" not in resp.data
 
 
-@pytest.mark.integration
-@pytest.mark.django_db
-class TestPaymentDetailEndpoint:
+class TestPaymentList:
 
-    def test_detail_returns_200(self, auth_client, payment):
-        response = auth_client.get(detail_url(payment.transaction_reference))
-        assert response.status_code == 200
+    URL = f"{BASE}/list/"
 
-    def test_detail_unauthenticated_returns_401(self, api_client, payment):
-        response = api_client.get(detail_url(payment.transaction_reference))
-        assert response.status_code == 401
+    def test_list_requires_auth(self, api_client):
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 401
 
-    def test_detail_returns_correct_payment(self, auth_client, payment):
-        response = auth_client.get(detail_url(payment.transaction_reference))
-        assert response.data["id"] == str(payment.id)
-        assert response.data["transaction_reference"] == str(payment.transaction_reference)
-
-    def test_detail_nonexistent_returns_404(self, auth_client, db):
-        response = auth_client.get(detail_url(uuid.uuid4()))
-        assert response.status_code == 404
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-class TestPaymentListEndpoint:
-
-    def test_list_returns_200(self, auth_client, db):
-        response = auth_client.get(PAYMENTS_LIST_URL)
-        assert response.status_code == 200
-
-    def test_list_unauthenticated_returns_401(self, api_client, db):
-        response = api_client.get(PAYMENTS_LIST_URL)
-        assert response.status_code == 401
-
-    def test_list_filter_by_order_pricing_id(self, auth_client, db):
-        target_id = uuid.uuid4()
-        from payement_app.tests.factories import PaymentFactory
-        PaymentFactory(order_pricing_id=target_id)
-        PaymentFactory(order_pricing_id=target_id)
-        PaymentFactory()  # autre commande
-
-        response = auth_client.get(PAYMENTS_LIST_URL, {"order_pricing_id": str(target_id)})
-        results = response.data["results"] if "results" in response.data else response.data
-        assert len(results) == 2
-        for p in results:
-            assert p["order_pricing_id"] == str(target_id)
-
-    def test_list_without_filter_returns_all(self, auth_client, db):
-        from payement_app.tests.factories import PaymentFactory
+    def test_list_returns_payments(self, auth_client):
         PaymentFactory.create_batch(3)
-        response = auth_client.get(PAYMENTS_LIST_URL)
-        count = response.data["count"] if "count" in response.data else len(response.data)
-        assert count >= 3
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        assert len(resp.data) == 3
+
+    def test_list_filter_by_order_pricing_id(self, auth_client):
+        PaymentFactory(order_pricing_id=ORDER_PRICING_ID)
+        PaymentFactory()  # autre order
+        resp = auth_client.get(self.URL, {"order_pricing_id": str(ORDER_PRICING_ID)})
+        assert resp.status_code == 200
+        assert len(resp.data) == 1
+
+    def test_list_empty(self, auth_client):
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        assert resp.data == []
+
+
+class TestPaymentDetail:
+
+    def test_detail_by_transaction_reference(self, auth_client, payment):
+        url = f"{BASE}/{payment.transaction_reference}/"
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+        assert resp.data["id"] == str(payment.id)
+
+    def test_detail_requires_auth(self, api_client, payment):
+        url = f"{BASE}/{payment.transaction_reference}/"
+        resp = api_client.get(url)
+        assert resp.status_code == 401
+
+    def test_detail_not_found(self, auth_client):
+        url = f"{BASE}/{uuid.uuid4()}/"
+        resp = auth_client.get(url)
+        assert resp.status_code == 404

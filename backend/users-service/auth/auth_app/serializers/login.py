@@ -1,9 +1,9 @@
+# serializers/login.py
 from rest_framework import serializers
 from ..models.user_audit_log import UserAuditLog
-from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth import get_user_model
+
 User = get_user_model()
 
 
@@ -12,7 +12,6 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, data):
-        # Chercher l'utilisateur manuellement pour distinguer les cas
         try:
             user = User.objects.get(email=data["email"])
         except User.DoesNotExist:
@@ -25,6 +24,9 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Compte désactivé.")
 
         refresh = RefreshToken.for_user(user)
+
+        # Ajouter les claims custom dans le token
+        refresh["email"] = user.email
 
         UserAuditLog.objects.create(user=user, action="LOGIN")
 

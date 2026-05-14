@@ -1,0 +1,55 @@
+# ── Stage 1 : Builder ────────────────────────────────────────────────
+FROM python:3.12-alpine AS builder
+WORKDIR /app
+
+RUN apk add --no-cache gcc musl-dev postgresql-dev
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --upgrade pip --no-cache-dir \
+    && pip install --no-cache-dir -r requirements.txt
+
+# ── Stage 2 : Runtime ────────────────────────────────────────────────
+FROM python:3.12-alpine
+RUN apk upgrade --no-cache
+WORKDIR /app
+
+RUN apk add --no-cache libpq
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN adduser -D -u 1001 django
+
+COPY --chown=django:django entrypoint.sh .
+COPY --chown=django:django interation/ ./interation/
+
+RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
+
+RUN DJANGO_SETTINGS_MODULE=interation.settings.base \
+    SECRET_KEY=build-only-dummy-key \
+    ALLOWED_HOSTS=localhost \
+    DB_ENGINE=django.db.backends.postgresql \
+    DB_NAME=dummy \
+    DB_USER=dummy \
+    DB_PASSWORD=dummy \
+    DB_HOST=localhost \
+    DB_PORT=5432 \
+    python interation/manage.py collectstatic --noinput
+
+USER django
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DJANGO_SETTINGS_MODULE=interation.settings.base
+
+LABEL org.opencontainers.image.title="interation-service"
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')" || exit 1
+
+ENTRYPOINT ["./entrypoint.sh"]

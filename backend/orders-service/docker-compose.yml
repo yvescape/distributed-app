@@ -23,13 +23,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: capedev/orders-service:latest
+    container_name: orders
     env_file:
       - .env.docker
     environment:
-      DB_HOST: postgres                          # ← garanti vers le service postgres
-      DJANGO_SETTINGS_MODULE: orders.settings.base  # ← route correcte
+      DB_HOST: postgres
+      DJANGO_SETTINGS_MODULE: orders.settings.base
     ports:
-      - "8003:8000"                              # ← user=8001, products=8002, orders=8003
+      - "8003:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,9 +39,13 @@ services:
       - ./orders:/app/orders
     networks:
       - orders_network
+      - microservices-net
 
 networks:
   orders_network:
+    driver: bridge
+  microservices-net:
+    name: microservices-net
     driver: bridge
 
 volumes:

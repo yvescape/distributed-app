@@ -1,0 +1,166 @@
+name: Frontend — CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/e-commerce/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/e-commerce/**"
+
+jobs:
+  # ── Job 1 : Lint + Tests unitaires & intégration ──────────────────────────
+  test:
+    name: Tests unitaires & intégration
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/e-commerce/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/e-commerce
+        run: npm ci --quiet
+
+      - name: Lint
+        working-directory: frontend/e-commerce
+        run: npm run lint
+
+      - name: Tests unitaires & intégration (avec couverture)
+        working-directory: frontend/e-commerce
+        run: npm run test:coverage
+
+      - name: Upload rapport de couverture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: frontend/e-commerce/coverage/
+          retention-days: 7
+
+  # ── Job 2 : Tests E2E (Playwright) ────────────────────────────────────────
+  test-e2e:
+    name: Tests E2E (Playwright)
+    runs-on: self-hosted
+    needs: test
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/e-commerce/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/e-commerce
+        run: npm ci --quiet
+
+      - name: Install Playwright + navigateurs
+        working-directory: frontend/e-commerce
+        run: npx playwright install chromium --with-deps
+
+      - name: Tests E2E
+        working-directory: frontend/e-commerce
+        run: npx playwright test
+
+      - name: Upload rapport Playwright (échec uniquement)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/e-commerce/playwright-report/
+          retention-days: 7
+
+  # ── Job 3 : Build → Scan → Push ───────────────────────────────────────────
+  build:
+    name: Build & Push
+    runs-on: self-hosted
+    needs: [test, test-e2e]
+    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build image
+        working-directory: frontend/e-commerce
+        run: |
+          docker build \
+            --tag capedev/e-commerce-frontend:${{ github.sha }} \
+            --tag capedev/e-commerce-frontend:latest \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f Dockerfile .
+
+      - name: Scan Trivy (bloquant)
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format table \
+            capedev/e-commerce-frontend:${{ github.sha }}
+
+      - name: Push Docker Hub
+        run: |
+          docker push capedev/e-commerce-frontend:${{ github.sha }}
+          docker push capedev/e-commerce-frontend:latest
+
+  # ── Job 4 : Deploy via GitOps ─────────────────────────────────────────────
+  deploy:
+    name: Deploy via GitOps
+    runs-on: self-hosted
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout gitops-repo
+        uses: actions/checkout@v5
+        with:
+          repository: yvescape/gitops-repo
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops-repo
+
+      - name: Update image tag in gitops-repo
+        run: |
+          sed -i "s|capedev/e-commerce-frontend:.*|capedev/e-commerce-frontend:${{ github.sha }}|" \
+            gitops-repo/apps/production/frontend/deployment.yaml
+
+      - name: Commit and push to gitops-repo
+        run: |
+          cd gitops-repo
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git add apps/production/frontend/deployment.yaml
+          git commit -m "deploy: frontend ${{ github.sha }}"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "ArgoCD va détecter le changement et synchroniser automatiquement."
+          echo "Image déployée : capedev/e-commerce-frontend:${{ github.sha }}"

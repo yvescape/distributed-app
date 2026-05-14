@@ -23,13 +23,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: capedev/products-service:latest
+    container_name: products
     env_file:
-      - .env.docker          # ← .env.docker comme tous les autres services
+      - .env.docker
     environment:
-      DB_HOST: postgres      # ← garanti vers le service postgres
+      DB_HOST: postgres
       DJANGO_SETTINGS_MODULE: products.settings.base
     ports:
-      - "8002:8000"          # ← 8002 : user=8001, payment=8004
+      - "8002:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,9 +39,13 @@ services:
       - ./products:/app/products
     networks:
       - products_network
+      - microservices-net
 
 networks:
   products_network:
+    driver: bridge
+  microservices-net:
+    name: microservices-net
     driver: bridge
 
 volumes:

@@ -1,154 +1,136 @@
-# orders_app/tests/tests_integration/test_order_endpoints.py
-import pytest
+"""
+Tests d'intégration — Order endpoints (list, detail, confirm, cancel, claim, cart count).
+"""
 import uuid
 from decimal import Decimal
-from rest_framework.test import APIClient
+
+import pytest
+
 from orders_app.models.order import Order
-from orders_app.models.order_item import OrderItem
-from orders_app.models.order_address import OrderAddress
-from ..factories import OrderFactory, OrderItemFactory, OrderAddressFactory
+from ..factories import OrderFactory, OrderItemFactory, OrderAddressFactory, GuestOrderFactory
+from ..conftest import USER_ID, USER_ID_2, SESSION_ID, PRODUCT_ID
+
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
-ORDERS_URL = "/api/orders/"
-MY_ORDERS_URL = "/api/orders/my/"
+class TestUserOrderList:
+
+    URL = "/my/"
+
+    def test_list_own_orders(self, auth_client):
+        OrderFactory(user_id=USER_ID, status="confirmed")
+        OrderFactory(user_id=USER_ID, status="pending")
+        OrderFactory(user_id=USER_ID_2)  # autre user
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        assert len(resp.data) == 2
+
+    def test_list_guest_orders_by_session(self, api_client):
+        order = GuestOrderFactory(session_id=SESSION_ID)
+        resp = api_client.get(self.URL, {"session_id": str(SESSION_ID)})
+        assert resp.status_code == 200
+        assert len(resp.data) == 1
+
+    def test_list_empty_without_auth_or_session(self, api_client):
+        resp = api_client.get(self.URL)
+        assert resp.status_code == 200
+        assert resp.data == []
 
 
-def detail_url(pk):
-    return f"/api/orders/{pk}/"
+class TestOrderDetail:
+
+    def test_detail_own_order(self, auth_client, order_with_items):
+        resp = auth_client.get(f"/{order_with_items.id}/")
+        assert resp.status_code == 200
+        assert resp.data["id"] == str(order_with_items.id)
+        assert len(resp.data["items"]) == 2
+        assert resp.data["address"] is not None
+        assert resp.data["pricing"] is not None
+
+    def test_detail_other_user_returns_404(self, auth_client_2, order_with_items):
+        resp = auth_client_2.get(f"/{order_with_items.id}/")
+        assert resp.status_code == 404
+
+    def test_detail_guest_by_session(self, api_client, guest_order_with_items):
+        resp = api_client.get(f"/{guest_order_with_items.id}/", {"session_id": str(SESSION_ID)})
+        assert resp.status_code == 200
 
 
-def status_url(pk):
-    return f"/api/orders/{pk}/status/"
+class TestOrderConfirm:
+
+    def test_confirm_order_with_items_and_address(self, auth_client, order_with_items):
+        resp = auth_client.put(f"/{order_with_items.id}/confirm/")
+        assert resp.status_code == 200
+        assert resp.data["status"] == "confirmed"
+
+    def test_confirm_without_items_fails(self, auth_client):
+        order = OrderFactory(user_id=USER_ID)
+        OrderAddressFactory(order=order)
+        resp = auth_client.put(f"/{order.id}/confirm/")
+        assert resp.status_code == 400
+
+    def test_confirm_without_address_fails(self, auth_client):
+        order = OrderFactory(user_id=USER_ID)
+        OrderItemFactory(order=order)
+        resp = auth_client.put(f"/{order.id}/confirm/")
+        assert resp.status_code == 400
 
 
-@pytest.mark.integration
-@pytest.mark.django_db
-class TestOrderCreateEndpoint:
+class TestOrderCancel:
 
-    def test_create_order_returns_201(self, api_client, valid_order_payload):
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert response.status_code == 201
+    def test_cancel_pending_order(self, auth_client, order_with_items):
+        resp = auth_client.put(f"/{order_with_items.id}/cancel/")
+        assert resp.status_code == 200
+        assert resp.data["status"] == "cancelled"
 
-    def test_create_order_no_auth_required(self, api_client, valid_order_payload):
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert response.status_code == 201
+    def test_cancel_confirmed_order(self, auth_client):
+        order = OrderFactory(user_id=USER_ID, status="confirmed")
+        resp = auth_client.put(f"/{order.id}/cancel/")
+        assert resp.status_code == 200
+        assert resp.data["status"] == "cancelled"
 
-    def test_create_order_persists_in_db(self, api_client, valid_order_payload):
-        api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert Order.objects.filter(customer_email="jean@example.com").exists()
-
-    def test_create_order_creates_items(self, api_client, valid_order_payload):
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        order_id = response.data["id"]
-        assert OrderItem.objects.filter(order_id=order_id).count() == 1
-
-    def test_create_order_creates_address(self, api_client, valid_order_payload):
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        order_id = response.data["id"]
-        assert OrderAddress.objects.filter(order_id=order_id).exists()
-
-    def test_create_order_calculates_total(self, api_client, valid_order_payload):
-        # items: 49.99 × 2 = 99.98
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        order = Order.objects.get(id=response.data["id"])
-        assert order.total_amount == Decimal("99.98")
-
-    def test_create_order_default_status_pending(self, api_client, valid_order_payload):
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        order = Order.objects.get(id=response.data["id"])
-        assert order.status == "pending"
-
-    def test_create_order_missing_items_returns_400(self, api_client, valid_order_payload):
-        del valid_order_payload["items"]
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert response.status_code == 400
-
-    def test_create_order_missing_address_returns_400(self, api_client, valid_order_payload):
-        del valid_order_payload["address"]
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert response.status_code == 400
-
-    def test_create_order_invalid_email_returns_400(self, api_client, valid_order_payload):
-        valid_order_payload["customer_email"] = "not-valid"
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert response.status_code == 400
-
-    def test_create_order_with_user_id(self, api_client, valid_order_payload):
-        valid_order_payload["user_id"] = str(uuid.uuid4())
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert response.status_code == 201
-
-    def test_create_order_multiple_items(self, api_client, valid_order_payload):
-        valid_order_payload["items"].append({
-            "product_id": str(uuid.uuid4()),
-            "product_name": "Chanel No 5",
-            "price": "120.00",
-            "quantity": 1,
-        })
-        response = api_client.post(ORDERS_URL, data=valid_order_payload, format="json")
-        assert response.status_code == 201
-        order_id = response.data["id"]
-        assert OrderItem.objects.filter(order_id=order_id).count() == 2
+    def test_cancel_already_cancelled_fails(self, auth_client):
+        order = OrderFactory(user_id=USER_ID, status="cancelled")
+        resp = auth_client.put(f"/{order.id}/cancel/")
+        assert resp.status_code == 404
 
 
-@pytest.mark.integration
-@pytest.mark.django_db
-class TestOrderDetailEndpoint:
+class TestClaimGuestOrders:
 
-    def test_detail_returns_200(self, api_client, order):
-        response = api_client.get(detail_url(order.id))
-        assert response.status_code == 200
+    URL = "/claim/"
 
-    def test_detail_no_auth_required(self, api_client, order):
-        response = api_client.get(detail_url(order.id))
-        assert response.status_code == 200
+    def test_claim_guest_orders(self, auth_client):
+        GuestOrderFactory(session_id=SESSION_ID)
+        GuestOrderFactory(session_id=SESSION_ID)
+        resp = auth_client.patch(self.URL, {"session_id": str(SESSION_ID)}, format="json")
+        assert resp.status_code == 200
+        assert resp.data["orders_claimed"] == 2
+        assert Order.objects.filter(user_id=USER_ID).count() == 2
 
-    def test_detail_returns_correct_order(self, api_client, order):
-        response = api_client.get(detail_url(order.id))
-        assert response.data["id"] == str(order.id)
-        assert response.data["customer_email"] == order.customer_email
+    def test_claim_without_session_id(self, auth_client):
+        resp = auth_client.patch(self.URL, {}, format="json")
+        assert resp.status_code == 400
 
-    def test_detail_contains_items(self, api_client, order):
-        response = api_client.get(detail_url(order.id))
-        assert len(response.data["items"]) == 2
-
-    def test_detail_contains_address(self, api_client, order):
-        response = api_client.get(detail_url(order.id))
-        assert response.data["address"]["city"] == "Abidjan"
-
-    def test_detail_nonexistent_returns_404(self, api_client, db):
-        response = api_client.get(detail_url(uuid.uuid4()))
-        assert response.status_code == 404
+    def test_claim_requires_auth(self, api_client):
+        resp = api_client.patch(self.URL, {"session_id": str(SESSION_ID)}, format="json")
+        assert resp.status_code == 401
 
 
-@pytest.mark.integration
-@pytest.mark.django_db
-class TestOrderStatusUpdateEndpoint:
+class TestCartCount:
 
-    def test_update_status_to_confirmed(self, admin_client, order):
-        response = admin_client.patch(status_url(order.id), data={"status": "confirmed"}, format="json")
-        assert response.status_code == 200
-        order.refresh_from_db()
-        assert order.status == "confirmed"
+    URL = "/cart/count/"
 
-    def test_update_status_to_cancelled(self, admin_client, order):
-        response = admin_client.patch(status_url(order.id), data={"status": "cancelled"}, format="json")
-        assert response.status_code == 200
-        order.refresh_from_db()
-        assert order.status == "cancelled"
+    def test_cart_count_with_items(self, auth_client, order_with_items):
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        assert resp.data["count"] == 3  # 2 + 1
 
-    def test_update_invalid_status_returns_400(self, admin_client, order):
-        response = admin_client.patch(status_url(order.id), data={"status": "shipped"}, format="json")
-        assert response.status_code == 400
+    def test_cart_count_empty(self, auth_client):
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        assert resp.data["count"] == 0
 
-    def test_update_nonexistent_order_returns_404(self, admin_client, db):
-        response = admin_client.patch(status_url(uuid.uuid4()), data={"status": "confirmed"}, format="json")
-        assert response.status_code == 404
-
-    def test_update_status_unauthenticated_returns_401(self, api_client, order):
-        response = api_client.patch(status_url(order.id), data={"status": "confirmed"}, format="json")
-        assert response.status_code == 401
-
-    def test_update_status_non_admin_returns_403(self, regular_client, order):
-        response = regular_client.patch(status_url(order.id), data={"status": "confirmed"}, format="json")
-        assert response.status_code == 403
+    def test_cart_count_guest(self, api_client, guest_order_with_items):
+        resp = api_client.get(self.URL, {"session_id": str(SESSION_ID)})
+        assert resp.status_code == 200
+        assert resp.data["count"] == 1

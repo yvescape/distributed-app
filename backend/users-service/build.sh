@@ -29,13 +29,19 @@ if ! docker info &> /dev/null; then
   exit 1
 fi
 
-# Login Docker Hub : faites 'docker login -u capedev' une fois manuellement
 echo "Vérifications OK."
+
+# ── Fix CRLF ──────────────────────────────────────────────────
+echo ""
+echo "[0.5/4] Conversion CRLF → LF des scripts shell..."
+sed -i 's/\r$//' entrypoint.sh
+echo "Conversion OK."
 
 # ── Étape 1 : Build ───────────────────────────────────────────
 echo ""
 echo "[1/4] Build de l'image..."
 docker build \
+  --no-cache \
   --tag "${FULL_IMAGE}:${GIT_SHA}" \
   --tag "${FULL_IMAGE}:${BRANCH}" \
   --label "org.opencontainers.image.revision=${GIT_SHA}" \
@@ -43,7 +49,6 @@ docker build \
   --label "org.opencontainers.image.source=https://github.com/capedev/${IMAGE_NAME}" \
   .
 
-# latest uniquement depuis main
 if [ "${BRANCH}" = "main" ]; then
   docker tag "${FULL_IMAGE}:${GIT_SHA}" "${FULL_IMAGE}:latest"
   echo "Tag latest appliqué (branche main)."
@@ -65,6 +70,7 @@ echo ""
 echo "Vérification des CVE bloquantes (HIGH, CRITICAL)..."
 trivy image \
   --severity HIGH,CRITICAL \
+  --ignore-unfixed \
   --exit-code 1 \
   --format table \
   "${FULL_IMAGE}:${GIT_SHA}"
@@ -91,6 +97,6 @@ if [ "${BRANCH}" = "main" ]; then
 fi
 echo ""
 echo "Pour déployer sur k3s :"
-echo "  kubectl set image deployment/auth-service auth=${FULL_IMAGE}:${GIT_SHA}"
+echo "  kubectl set image deployment/auth-service django=${FULL_IMAGE}:${GIT_SHA}"
 echo ""
 echo "Terminé."

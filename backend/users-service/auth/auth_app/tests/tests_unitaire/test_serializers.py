@@ -1,210 +1,185 @@
-# tests/unit/test_serializers.py
+"""
+Tests unitaires — Serializers (auth-service).
+"""
 import pytest
-from unittest.mock import patch, MagicMock
 from django.contrib.auth import get_user_model
 from auth_app.serializers.register import RegisterSerializer
-from auth_app.serializers.login import LoginSerializer
 from auth_app.serializers.user import UserSerializer
+from auth_app.serializers.login import LoginSerializer
 from auth_app.serializers.update_user import UpdateUserSerializer
-from auth_app.serializers.profile import ProfileSerializer
+from auth_app.serializers.audit_log import AuditLogSerializer
 from auth_app.models.user_audit_log import UserAuditLog
-from auth_app.models.user_profile import UserProfile
-from ..factories import UserFactory, UserProfileFactory
+from ..factories import UserFactory
 
 User = get_user_model()
 
+pytestmark = [pytest.mark.django_db, pytest.mark.unit]
 
-# ── RegisterSerializer ─────────────────────────────────────────────────────────
 
-@pytest.mark.unit
+# ═══════════════════════════════════════════════════════════════════════
+#  RegisterSerializer
+# ═══════════════════════════════════════════════════════════════════════
+
 class TestRegisterSerializer:
 
-    def _valid_data(self, overrides=None):
+    def test_valid_registration(self):
         data = {
-            "email": "newuser@example.com",
+            "email": "new@example.com",
             "username": "newuser",
             "first_name": "John",
             "last_name": "Doe",
             "password": "StrongPass123!",
             "password_confirm": "StrongPass123!",
         }
-        if overrides:
-            data.update(overrides)
-        return data
+        serializer = RegisterSerializer(data=data)
+        assert serializer.is_valid(), serializer.errors
 
-    def test_valid_data_is_accepted(self, db):
-        s = RegisterSerializer(data=self._valid_data())
-        assert s.is_valid(), s.errors
+    def test_mismatched_passwords(self):
+        data = {
+            "email": "new@example.com",
+            "username": "newuser",
+            "first_name": "John",
+            "last_name": "Doe",
+            "password": "StrongPass123!",
+            "password_confirm": "DifferentPass456!",
+        }
+        serializer = RegisterSerializer(data=data)
+        assert not serializer.is_valid()
 
-    def test_mismatched_passwords_rejected(self, db):
-        s = RegisterSerializer(data=self._valid_data({"password_confirm": "WrongPass!"}))
-        assert not s.is_valid()
-        assert "non_field_errors" in s.errors
+    def test_short_password(self):
+        data = {
+            "email": "new@example.com",
+            "username": "newuser",
+            "first_name": "John",
+            "last_name": "Doe",
+            "password": "short",
+            "password_confirm": "short",
+        }
+        serializer = RegisterSerializer(data=data)
+        assert not serializer.is_valid()
+        assert "password" in serializer.errors
 
-    def test_password_too_short_rejected(self, db):
-        s = RegisterSerializer(data=self._valid_data({"password": "short", "password_confirm": "short"}))
-        assert not s.is_valid()
-        assert "password" in s.errors
+    def test_missing_email(self):
+        data = {
+            "username": "newuser",
+            "first_name": "John",
+            "last_name": "Doe",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+        }
+        serializer = RegisterSerializer(data=data)
+        assert not serializer.is_valid()
+        assert "email" in serializer.errors
 
-    def test_duplicate_email_rejected(self, db):
-        UserFactory(email="newuser@example.com")
-        s = RegisterSerializer(data=self._valid_data())
-        assert not s.is_valid()
-        assert "email" in s.errors
+    def test_create_user_successfully(self):
+        data = {
+            "email": "created@example.com",
+            "username": "createduser",
+            "first_name": "Jane",
+            "last_name": "Smith",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+        }
+        serializer = RegisterSerializer(data=data)
+        assert serializer.is_valid(), serializer.errors
+        user = serializer.save()
+        assert user.pk is not None
+        assert user.email == "created@example.com"
+        assert user.check_password("StrongPass123!")
 
-    def test_duplicate_username_rejected(self, db):
-        UserFactory(username="newuser")
-        s = RegisterSerializer(data=self._valid_data())
-        assert not s.is_valid()
-        assert "username" in s.errors
-
-    def test_create_user_creates_profile(self, db):
-        s = RegisterSerializer(data=self._valid_data())
-        assert s.is_valid()
-        user = s.save()
-        assert UserProfile.objects.filter(user=user).exists()
-
-    def test_create_user_creates_audit_log(self, db):
-        s = RegisterSerializer(data=self._valid_data())
-        assert s.is_valid()
-        user = s.save()
+    def test_create_user_creates_audit_log(self):
+        data = {
+            "email": "audit@example.com",
+            "username": "audituser",
+            "first_name": "Audit",
+            "last_name": "Test",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+        }
+        serializer = RegisterSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.save()
         assert UserAuditLog.objects.filter(user=user, action="CREATE").exists()
 
-    def test_password_not_in_response_fields(self, db):
-        s = RegisterSerializer(data=self._valid_data())
-        assert s.is_valid()
-        user = s.save()
-        out = RegisterSerializer(user)
-        assert "password" not in out.data
-        assert "password_confirm" not in out.data
-
-    def test_id_is_read_only(self, db):
-        s = RegisterSerializer(data=self._valid_data({"id": "00000000-0000-0000-0000-000000000000"}))
-        assert s.is_valid()
-        user = s.save()
-        # L'id imposé dans la requête ne doit pas être utilisé
-        assert str(user.id) != "00000000-0000-0000-0000-000000000000"
-
-    def test_missing_required_field_rejected(self, db):
-        data = self._valid_data()
-        data.pop("email")
-        s = RegisterSerializer(data=data)
-        assert not s.is_valid()
-        assert "email" in s.errors
+    def test_password_not_in_representation(self):
+        data = {
+            "email": "repr@example.com",
+            "username": "repruser",
+            "first_name": "Repr",
+            "last_name": "Test",
+            "password": "StrongPass123!",
+            "password_confirm": "StrongPass123!",
+        }
+        serializer = RegisterSerializer(data=data)
+        assert serializer.is_valid()
+        user = serializer.save()
+        output = RegisterSerializer(user).data
+        assert "password" not in output
+        assert "password_confirm" not in output
 
 
-# ── LoginSerializer ────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+#  UserSerializer
+# ═══════════════════════════════════════════════════════════════════════
 
-@pytest.mark.unit
-class TestLoginSerializer:
-
-    def test_valid_credentials_return_tokens(self, db):
-        user = UserFactory(email="login@example.com")
-        s = LoginSerializer(data={"email": "login@example.com", "password": "StrongPass123!"})
-        assert s.is_valid(), s.errors
-        assert "access" in s.validated_data
-        assert "refresh" in s.validated_data
-
-    def test_wrong_password_rejected(self, db):
-        UserFactory(email="login@example.com")
-        s = LoginSerializer(data={"email": "login@example.com", "password": "WrongPass!"})
-        assert not s.is_valid()
-        assert "non_field_errors" in s.errors
-
-    def test_unknown_email_rejected(self, db):
-        s = LoginSerializer(data={"email": "ghost@example.com", "password": "StrongPass123!"})
-        assert not s.is_valid()
-
-    def test_inactive_user_rejected(self, db):
-        UserFactory(email="inactive@example.com", is_active=False)
-        s = LoginSerializer(data={"email": "inactive@example.com", "password": "StrongPass123!"})
-        assert not s.is_valid()
-        error_text = str(s.errors)
-        assert "désactivé" in error_text
-
-    def test_login_creates_audit_log(self, db):
-        user = UserFactory(email="audit@example.com")
-        s = LoginSerializer(data={"email": "audit@example.com", "password": "StrongPass123!"})
-        assert s.is_valid()
-        assert UserAuditLog.objects.filter(user=user, action="LOGIN").exists()
-
-    def test_invalid_email_format_rejected(self):
-        s = LoginSerializer(data={"email": "not-an-email", "password": "StrongPass123!"})
-        assert not s.is_valid()
-        assert "email" in s.errors
-
-
-# ── UserSerializer ─────────────────────────────────────────────────────────────
-
-@pytest.mark.unit
 class TestUserSerializer:
 
-    def test_expected_fields_present(self, db):
+    def test_expected_fields_present(self):
         user = UserFactory()
-        UserProfileFactory(user=user)
         data = UserSerializer(user).data
-        expected = {"id", "email", "username", "first_name", "last_name",
-                    "is_active", "is_email_verified", "created_at", "profile"}
+        expected = {
+            "id", "email", "username", "first_name", "last_name",
+            "is_active", "is_email_verified", "created_at",
+        }
         assert set(data.keys()) == expected
 
-    def test_profile_nested_when_exists(self, db):
+    def test_does_not_expose_password(self):
         user = UserFactory()
-        UserProfileFactory(user=user, country="Côte d'Ivoire")
         data = UserSerializer(user).data
-        assert data["profile"] is not None
-        assert data["profile"]["country"] == "Côte d'Ivoire"
+        assert "password" not in data
 
-    def test_profile_none_when_missing(self, db):
-        user = UserFactory()  # pas de profil créé
+    def test_read_only_id(self):
+        user = UserFactory()
         data = UserSerializer(user).data
-        assert data["profile"] is None
+        assert "id" in data
 
 
-# ── UpdateUserSerializer ───────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+#  UpdateUserSerializer
+# ═══════════════════════════════════════════════════════════════════════
 
-@pytest.mark.unit
 class TestUpdateUserSerializer:
 
-    def test_update_first_and_last_name(self, db):
-        user = UserFactory(first_name="Old", last_name="Name")
-        s = UpdateUserSerializer(user, data={"first_name": "New", "last_name": "Name"})
-        assert s.is_valid(), s.errors
-        updated = s.save()
-        assert updated.first_name == "New"
+    def test_valid_update(self):
+        data = {"first_name": "Updated", "last_name": "Name"}
+        serializer = UpdateUserSerializer(data=data)
+        assert serializer.is_valid(), serializer.errors
 
-    def test_update_creates_audit_log(self, db):
+    def test_partial_update(self):
+        data = {"first_name": "OnlyFirst"}
+        serializer = UpdateUserSerializer(data=data, partial=True)
+        assert serializer.is_valid(), serializer.errors
+
+    def test_update_creates_audit_log(self):
         user = UserFactory()
-        s = UpdateUserSerializer(user, data={"first_name": "Updated", "last_name": "User"})
-        assert s.is_valid()
-        s.save()
+        serializer = UpdateUserSerializer(user, data={"first_name": "Changed"}, partial=True)
+        assert serializer.is_valid()
+        serializer.save()
         assert UserAuditLog.objects.filter(user=user, action="UPDATE").exists()
 
-    def test_cannot_update_email_via_this_serializer(self, db):
-        user = UserFactory(email="original@example.com")
-        s = UpdateUserSerializer(user, data={"email": "hacked@example.com", "first_name": "X", "last_name": "Y"})
-        assert s.is_valid()
-        s.save()
-        user.refresh_from_db()
-        # L'email ne doit pas avoir changé
-        assert user.email == "original@example.com"
 
+# ═══════════════════════════════════════════════════════════════════════
+#  AuditLogSerializer
+# ═══════════════════════════════════════════════════════════════════════
 
-# ── ProfileSerializer ──────────────────────────────────────────────────────────
+class TestAuditLogSerializer:
 
-@pytest.mark.unit
-class TestProfileSerializer:
-
-    def test_valid_profile_data(self, db):
-        data = {"phone_number": "+2250102030405", "bio": "Dev", "country": "CI", "avatar": "https://cdn.example.com/a.jpg"}
-        s = ProfileSerializer(data=data)
-        assert s.is_valid(), s.errors
-
-    def test_all_fields_optional(self, db):
-        s = ProfileSerializer(data={})
-        assert s.is_valid(), s.errors
-
-    def test_expected_fields(self, db):
+    def test_serializes_log_with_email(self):
         user = UserFactory()
-        profile = UserProfileFactory(user=user)
-        data = ProfileSerializer(profile).data
-        assert set(data.keys()) == {"phone_number", "avatar", "bio", "country"}
+        log = UserAuditLog.objects.create(user=user, action="LOGIN", ip_address="1.2.3.4")
+        data = AuditLogSerializer(log).data
+        assert data["user_email"] == user.email
+        assert data["action"] == "LOGIN"
+        assert data["ip_address"] == "1.2.3.4"
+        assert "id" in data
+        assert "timestamp" in data

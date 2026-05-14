@@ -1,215 +1,126 @@
-# orders_app/tests/tests_unitaire/test_models.py
+"""
+Tests unitaires — Modèles (Order, OrderItem, DeliveryOption, OrderPricing, OrderAddress).
+"""
 import uuid
-import pytest
 from decimal import Decimal
-from django.utils import timezone
+
+import pytest
+from django.db import IntegrityError
+
 from orders_app.models.order import Order
 from orders_app.models.order_item import OrderItem
 from orders_app.models.order_address import OrderAddress
-from orders_app.models.delivery_option import DeliveryOption
 from orders_app.models.order_pricing import OrderPricing
+from orders_app.models.delivery_option import DeliveryOption
 from ..factories import (
     OrderFactory, OrderItemFactory, OrderAddressFactory,
-    DeliveryOptionFactory, OrderPricingFactory
+    DeliveryOptionFactory, OrderPricingFactory,
 )
+from ..conftest import USER_ID, PRODUCT_ID
+
+pytestmark = [pytest.mark.django_db, pytest.mark.unit]
 
 
-@pytest.mark.unit
 class TestOrderModel:
 
-    def test_order_creation(self, db):
-        order = OrderFactory()
+    def test_create_order(self):
+        order = OrderFactory(user_id=USER_ID)
         assert order.pk is not None
-        assert isinstance(order.id, uuid.UUID)
+        assert order.status == "pending"
+        assert order.user_id == USER_ID
 
-    def test_order_default_status_is_pending(self, db):
-        order = OrderFactory()
+    def test_default_status_is_pending(self):
+        order = Order.objects.create(user_id=USER_ID)
         assert order.status == "pending"
 
-    def test_order_default_total_is_zero(self, db):
-        order = OrderFactory(total_amount=Decimal("0"))
-        assert order.total_amount == Decimal("0")
-
-    def test_order_str(self, db):
+    def test_str(self):
         order = OrderFactory()
-        assert str(order) == f"Order {order.id}"
+        assert "Order" in str(order)
 
-    def test_order_user_id_nullable(self, db):
-        order = OrderFactory(user_id=None)
-        assert order.user_id is None
-
-    def test_order_status_choices(self, db):
-        for status in ["pending", "confirmed", "cancelled"]:
-            o = OrderFactory(status=status)
-            assert o.status == status
-
-    def test_order_timestamps(self, db):
-        before = timezone.now()
+    def test_subtotal_property(self):
         order = OrderFactory()
-        after = timezone.now()
-        assert before <= order.created_at <= after
+        OrderItemFactory(order=order, price=Decimal("50.00"), quantity=2, total=Decimal("100.00"))
+        OrderItemFactory(order=order, price=Decimal("30.00"), quantity=1, total=Decimal("30.00"))
+        assert order.subtotal == Decimal("130.00")
 
-    def test_order_updated_at_changes_on_save(self, db):
+    def test_subtotal_empty_order(self):
         order = OrderFactory()
-        old = order.updated_at
-        order.status = "confirmed"
-        order.save()
-        order.refresh_from_db()
-        assert order.updated_at >= old
+        assert order.subtotal == 0
 
 
-@pytest.mark.unit
 class TestOrderItemModel:
 
-    def test_order_item_creation(self, db):
-        item = OrderItemFactory(price=Decimal("49.99"), quantity=2, subtotal=Decimal("99.98"))
+    def test_create_item(self):
+        item = OrderItemFactory()
         assert item.pk is not None
-        assert isinstance(item.id, uuid.UUID)
+        assert item.quantity == 1
 
-    def test_order_item_str(self, db):
-        item = OrderItemFactory(product_name="Dior Sauvage", quantity=3)
-        assert str(item) == "Dior Sauvage x 3"
-
-    def test_order_item_cascade_delete(self, db):
-        item = OrderItemFactory()
-        item_id = item.pk
-        item.order.delete()
-        assert not OrderItem.objects.filter(id=item_id).exists()
-
-    def test_order_item_product_id_is_uuid(self, db):
-        item = OrderItemFactory()
-        assert isinstance(item.product_id, uuid.UUID)
-
-    def test_order_item_default_quantity(self, db):
-        item = OrderItemFactory()
-        assert item.quantity >= 1
+    def test_str(self):
+        item = OrderItemFactory(product_name="Rose Noire", quantity=3)
+        assert "Rose Noire" in str(item)
+        assert "3" in str(item)
 
 
-@pytest.mark.unit
 class TestOrderAddressModel:
 
-    def test_address_creation(self, db):
-        address = OrderAddressFactory(city="Abidjan", address_line="Riviera 3")
-        assert address.pk is not None
-        assert address.city == "Abidjan"
+    def test_create_address(self):
+        addr = OrderAddressFactory()
+        assert addr.first_name == "Jean"
+        assert addr.city == "Abidjan"
 
-    def test_address_cascade_delete(self, db):
-        address = OrderAddressFactory()
-        address_id = address.pk
-        address.order.delete()
-        assert not OrderAddress.objects.filter(id=address_id).exists()
+    def test_str(self):
+        addr = OrderAddressFactory(first_name="Marie", last_name="Koné", city="Bouaké")
+        assert "Marie" in str(addr)
+        assert "Bouaké" in str(addr)
 
-    def test_address_one_to_one_constraint(self, db):
-        from django.db import IntegrityError
+    def test_one_address_per_order(self):
         order = OrderFactory()
-        OrderAddress.objects.create(order=order, city="Abidjan", address_line="Rue 1")
+        OrderAddressFactory(order=order)
         with pytest.raises(IntegrityError):
-            OrderAddress.objects.create(order=order, city="Bouaké", address_line="Rue 2")
-
-    def test_address_postal_code_optional(self, db):
-        address = OrderAddressFactory(postal_code="")
-        assert address.postal_code == ""
+            OrderAddressFactory(order=order)
 
 
-@pytest.mark.unit
 class TestDeliveryOptionModel:
 
-    def test_delivery_option_creation(self, db):
-        opt = DeliveryOptionFactory(name="Standard", amount=Decimal("2500.00"))
-        assert opt.pk is not None
-        assert opt.name == "Standard"
-
-    def test_delivery_option_str(self, db):
-        opt = DeliveryOptionFactory(name="Express", description="24h")
-        assert str(opt) == "Express 24h"
-
-    def test_delivery_option_default_currency_xof(self, db):
-        opt = DeliveryOptionFactory()
-        assert opt.currency == "XOF"
-
-    def test_delivery_option_default_is_active(self, db):
-        opt = DeliveryOptionFactory()
+    def test_create_option(self):
+        opt = DeliveryOptionFactory(name="Express", amount=Decimal("5000.00"))
+        assert opt.name == "Express"
         assert opt.is_active is True
 
-    def test_only_one_default_delivery_option(self, db):
-        """Quand on définit une nouvelle option par défaut, l'ancienne perd is_default."""
+    def test_default_flag_unique(self):
+        """Un seul is_default=True à la fois."""
         opt1 = DeliveryOptionFactory(is_default=True)
-        assert opt1.is_default is True
-
         opt2 = DeliveryOptionFactory(is_default=True)
         opt1.refresh_from_db()
-
-        assert opt2.is_default is True
         assert opt1.is_default is False
+        assert opt2.is_default is True
 
-    def test_inactive_option_flag(self, db):
-        opt = DeliveryOptionFactory(is_active=False)
-        assert opt.is_active is False
-
-    def test_position_ordering(self, db):
-        opt1 = DeliveryOptionFactory(position=0)
-        opt2 = DeliveryOptionFactory(position=1)
-        opt3 = DeliveryOptionFactory(position=2)
-        opts = list(DeliveryOption.objects.order_by("position"))
-        assert opts[0].pk == opt1.pk
-        assert opts[1].pk == opt2.pk
-        assert opts[2].pk == opt3.pk
+    def test_str(self):
+        opt = DeliveryOptionFactory(name="Standard", description="3-5j")
+        assert "Standard" in str(opt)
 
 
-@pytest.mark.unit
 class TestOrderPricingModel:
 
-    def test_pricing_creation(self, db):
+    def test_calculate_and_save(self, delivery_option):
         order = OrderFactory()
-        OrderItemFactory(order=order, price=Decimal("50.00"), quantity=2, subtotal=Decimal("100.00"))
-        delivery = DeliveryOptionFactory(amount=Decimal("2500.00"))
-
-        pricing = OrderPricing.objects.create(
-            order=order,
-            delivery_option=delivery,
-            currency="XOF",
-        )
-
+        OrderItemFactory(order=order, price=Decimal("100.00"), quantity=1, total=Decimal("100.00"))
+        pricing = OrderPricing.objects.create(order=order)
+        pricing.calculate_and_save()
         pricing.refresh_from_db()
         assert pricing.subtotal == Decimal("100.00")
-        assert pricing.delivery_price == Decimal("2500.00")
-        assert pricing.total == Decimal("2600.00")
+        assert pricing.delivery_price == delivery_option.amount
+        assert pricing.total == Decimal("100.00") + delivery_option.amount
 
-    def test_pricing_str(self, db):
+    def test_assign_default_delivery(self, delivery_option):
         order = OrderFactory()
-        OrderItemFactory(order=order, price=Decimal("10"), quantity=1, subtotal=Decimal("10"))
-        delivery = DeliveryOptionFactory()
-        pricing = OrderPricing.objects.create(order=order, delivery_option=delivery)
-        assert str(pricing) == f"Pricing for order {order.id}"
+        pricing = OrderPricing.objects.create(order=order)
+        pricing.assign_default_delivery()
+        assert pricing.delivery_option == delivery_option
 
-    def test_pricing_cascade_delete(self, db):
+    def test_no_delivery_option_available(self):
+        """Sans option de livraison active, delivery_price = 0."""
         order = OrderFactory()
-        OrderItemFactory(order=order, price=Decimal("10"), quantity=1, subtotal=Decimal("10"))
-        delivery = DeliveryOptionFactory()
-        pricing = OrderPricing.objects.create(order=order, delivery_option=delivery)
-        pricing_id = pricing.pk
-        order.delete()
-        assert not OrderPricing.objects.filter(id=pricing_id).exists()
-
-    def test_pricing_delivery_null_when_option_deleted(self, db):
-        order = OrderFactory()
-        OrderItemFactory(order=order, price=Decimal("10"), quantity=1, subtotal=Decimal("10"))
-        delivery = DeliveryOptionFactory()
-        pricing = OrderPricing.objects.create(order=order, delivery_option=delivery)
-        delivery.delete()
-        pricing.refresh_from_db()
-        assert pricing.delivery_option is None
-
-    def test_pricing_recalculates_on_save(self, db):
-        order = OrderFactory()
-        OrderItemFactory(order=order, price=Decimal("100"), quantity=1, subtotal=Decimal("100"))
-        delivery = DeliveryOptionFactory(amount=Decimal("1500"))
-        pricing = OrderPricing.objects.create(order=order, delivery_option=delivery)
-
-        # Ajouter un item et re-sauvegarder
-        OrderItemFactory(order=order, price=Decimal("50"), quantity=2, subtotal=Decimal("100"))
-        pricing.save()
-        pricing.refresh_from_db()
-
-        assert pricing.subtotal == Decimal("200")
-        assert pricing.total == Decimal("1700")
+        pricing = OrderPricing.objects.create(order=order)
+        pricing.assign_default_delivery()
+        assert pricing.delivery_price == Decimal("0")

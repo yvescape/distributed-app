@@ -1,20 +1,22 @@
+# serializers/order_address.py
 from rest_framework import serializers
-from ..models.order import Order
-from ..models.order_item import OrderItem
 from ..models.order_address import OrderAddress
 
 
-# -----------------------------
-# Order Address
-# -----------------------------
 class OrderAddressSerializer(serializers.ModelSerializer):
+
+    session_id = serializers.UUIDField(write_only=True, required=False)
 
     class Meta:
         model = OrderAddress
         fields = [
             "id",
+            "first_name",
+            "last_name",
+            "email",
+            "mobile",
             "city",
             "address_line",
-            "postal_code",
+            "session_id",
         ]
         read_only_fields = ["id"]
