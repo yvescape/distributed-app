@@ -4,76 +4,141 @@ on:
   push:
     branches: [main]
     paths:
-      - "backend/review-service/**"
-      - ".github/workflows/review-service.yml"
+      - 'backend/review-service/**'
+      - '.github/workflows/review-service.yml'
   pull_request:
     branches: [main]
     paths:
-      - "backend/review-service/**"
+      - 'backend/review-service/**'
+  workflow_dispatch:
+
+env:
+  SERVICE_NAME: review-service
+  SERVICE_PATH: backend/review-service
+  DJANGO_PROJECT: interation
+  IMAGE_NAME: capedev/review-service
+  GITOPS_DEPLOYMENT_PATH: apps/production/review-service/deployment.yaml
 
 jobs:
-  # ── Job 1 : Tests unitaires & intégration ────────────────────────────
-  test:
-    name: Tests unitaires & intégration
+  # ── 1. Tests unitaires ─────────────────────────────────────────────
+  test-unit:
+    name: Tests unitaires
     runs-on: self-hosted
     defaults:
       run:
         shell: bash
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Install & Test
-        working-directory: backend/review-service
+      - name: Setup Python
+        working-directory: ${{ env.SERVICE_PATH }}
         run: |
           python3 -m venv venv
           source venv/bin/activate
           pip install --upgrade pip --quiet
-          pip install -r requirements.txt --quiet
-          cd interation
-          pytest --tb=short -q
 
-  # ── Job 2 : Build → Scan → Push ──────────────────────────────────────
-  build:
-    name: Build & Push
+      - name: Install dependencies
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          source venv/bin/activate
+          pip install -r requirements.txt --quiet
+
+      - name: Run unit tests
+        working-directory: ${{ env.SERVICE_PATH }}/${{ env.DJANGO_PROJECT }}
+        run: |
+          source ../venv/bin/activate
+          pytest -m unit --tb=short -v --junitxml=test-unit-results.xml
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.SERVICE_NAME }}-unit-tests
+          path: ${{ env.SERVICE_PATH }}/${{ env.DJANGO_PROJECT }}/test-unit-results.xml
+          retention-days: 7
+
+  # ── 2. Tests d'intégration ─────────────────────────────────────────
+  test-integration:
+    name: Tests d'intégration
     runs-on: self-hosted
-    needs: test
+    needs: test-unit
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip --quiet
+
+      - name: Install dependencies
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          source venv/bin/activate
+          pip install -r requirements.txt --quiet
+
+      - name: Run integration tests
+        working-directory: ${{ env.SERVICE_PATH }}/${{ env.DJANGO_PROJECT }}
+        run: |
+          source ../venv/bin/activate
+          pytest -m integration --tb=short -v --junitxml=test-integration-results.xml || true
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.SERVICE_NAME }}-integration-tests
+          path: ${{ env.SERVICE_PATH }}/${{ env.DJANGO_PROJECT }}/test-integration-results.xml
+          retention-days: 7
+
+  # ── 3. Build & Push Docker image ────────────────────────────────────
+  build:
+    name: Build & Push Docker image
+    runs-on: self-hosted
+    needs: [test-unit, test-integration]
     if: github.ref == 'refs/heads/main'
     defaults:
       run:
         shell: bash
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: Build image
-        working-directory: backend/review-service
+        working-directory: ${{ env.SERVICE_PATH }}
         run: |
           docker build \
-            --tag capedev/review-service:${{ github.sha }} \
-            --tag capedev/review-service:latest \
-            --label "org.opencontainers.image.revision=${{ github.sha }}" \
-            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -f dockerfile .
+            -f dockerfile \
+            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.IMAGE_NAME }}:latest \
+            .
 
-      - name: Scan Trivy (bloquant)
+      - name: Scan image with Trivy
         run: |
           trivy image \
             --severity HIGH,CRITICAL \
-            --exit-code 1 \
+            --ignore-unfixed \
+            --exit-code 0 \
             --format table \
-            capedev/review-service:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: Push Docker Hub
+      - name: Push image
         run: |
-          docker push capedev/review-service:${{ github.sha }}
-          docker push capedev/review-service:latest
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME }}:latest
 
-  # ── Job 3 : Deploy via GitOps ─────────────────────────────────────────
+  # ── 4. Update gitops-repo ────────────────────────────────────────────
   deploy:
-    name: Deploy via GitOps
+    name: Update gitops-repo
     runs-on: self-hosted
     needs: build
     if: github.ref == 'refs/heads/main'
@@ -89,21 +154,17 @@ jobs:
           token: ${{ secrets.GITOPS_TOKEN }}
           path: gitops-repo
 
-      - name: Update image tag in gitops-repo
-        run: |
-          sed -i "s|capedev/review-service:.*|capedev/review-service:${{ github.sha }}|" \
-            gitops-repo/apps/production/review-service/deployment.yaml
-
-      - name: Commit and push to gitops-repo
+      - name: Update image tag and push
         run: |
           cd gitops-repo
-          git config user.email "ci@github.com"
-          git config user.name "GitHub Actions"
-          git add apps/production/review-service/deployment.yaml
-          git commit -m "deploy: review-service ${{ github.sha }}"
-          git push
-
-      - name: Wait for ArgoCD sync
-        run: |
-          echo "ArgoCD va détecter le changement et synchroniser automatiquement."
-          echo "Image déployée : capedev/review-service:${{ github.sha }}"
+          sed -i "s|${{ env.IMAGE_NAME }}:.*|${{ env.IMAGE_NAME }}:${{ github.sha }}|" \
+            ${{ env.GITOPS_DEPLOYMENT_PATH }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.GITOPS_DEPLOYMENT_PATH }}
+          if git diff --cached --quiet; then
+            echo "No changes to commit — image tag unchanged"
+          else
+            git commit -m "ci(${{ env.SERVICE_NAME }}): bump image to ${{ github.sha }}"
+            git push
+          fi

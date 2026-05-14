@@ -102,3 +102,6 @@ actions-runner/
 
 # ── gitops-repo (sous-dépôt séparé) ──────────────────────────
 gitops-repo/
+
+# ── dossier d'analyse ──────────────────────────
+analysis/
