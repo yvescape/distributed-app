@@ -2,21 +2,22 @@
 FROM python:3.12-alpine AS builder
 WORKDIR /app
 
-RUN apk add --no-cache gcc musl-dev postgresql-dev
-
+# psycopg2-binary est une wheel pré-compilée → pas besoin de gcc/musl/postgresql-dev
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
-RUN pip install --upgrade pip --no-cache-dir \
-    && pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip \
+    && pip install -r requirements.txt
 
 # ── Stage 2 : Runtime ────────────────────────────────────────────────
 FROM python:3.12-alpine
-RUN apk upgrade --no-cache
 WORKDIR /app
 
-RUN apk add --no-cache libpq
+# apk add EN PREMIER pour maximiser le cache de couche
+RUN apk add --no-cache libpq \
+    && apk upgrade --no-cache
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -26,7 +27,7 @@ RUN adduser -D -u 1001 django
 COPY --chown=django:django entrypoint.sh .
 COPY --chown=django:django products/ ./products/
 
-RUN chmod +x ./entrypoint.sh
+RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
 
 RUN DJANGO_SETTINGS_MODULE=products.settings.base \
     SECRET_KEY=build-only-dummy-key \
