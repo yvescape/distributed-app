@@ -19,8 +19,12 @@ env:
   IMAGE_NAME: capedev/review-service
   GITOPS_DEPLOYMENT_PATH: apps/production/review-service/deployment.yaml
 
+# ── Bloc réutilisable pour setup Python + cache ──────────────────────
+# (GitHub Actions ne supporte pas les vrais YAML anchors, on duplique
+#  le step mais en gardant la clé de cache identique)
+
 jobs:
-  # ── 1. Tests unitaires ─────────────────────────────────────────────
+  # ── 1 & 2. Tests en parallèle ──────────────────────────────────────
   test-unit:
     name: Tests unitaires
     runs-on: self-hosted
@@ -29,19 +33,21 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Setup Python & install deps
         working-directory: ${{ env.SERVICE_PATH }}
         run: |
           python3 -m venv venv
           source venv/bin/activate
           pip install --upgrade pip --quiet
-
-      - name: Install dependencies
-        working-directory: ${{ env.SERVICE_PATH }}
-        run: |
-          source venv/bin/activate
           pip install -r requirements.txt --quiet
 
       - name: Run unit tests
@@ -50,7 +56,7 @@ jobs:
           source ../venv/bin/activate
           pytest -m unit --tb=short -v --junitxml=test-unit-results.xml
 
-      - name: Upload unit test results
+      - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -58,29 +64,30 @@ jobs:
           path: ${{ env.SERVICE_PATH }}/${{ env.DJANGO_PROJECT }}/test-unit-results.xml
           retention-days: 7
 
-  # ── 2. Tests d'intégration ─────────────────────────────────────────
   test-integration:
     name: Tests d'intégration
     runs-on: self-hosted
-    needs: test-unit
+    # Pas de `needs: test-unit` → parallèle !
     defaults:
       run:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Setup Python & install deps
         working-directory: ${{ env.SERVICE_PATH }}
         run: |
           python3 -m venv venv
           source venv/bin/activate
           pip install --upgrade pip --quiet
-
-      - name: Install dependencies
-        working-directory: ${{ env.SERVICE_PATH }}
-        run: |
-          source venv/bin/activate
           pip install -r requirements.txt --quiet
 
       - name: Run integration tests
@@ -89,7 +96,7 @@ jobs:
           source ../venv/bin/activate
           pytest -m integration --tb=short -v --junitxml=test-integration-results.xml || true
 
-      - name: Upload integration test results
+      - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -97,7 +104,7 @@ jobs:
           path: ${{ env.SERVICE_PATH }}/${{ env.DJANGO_PROJECT }}/test-integration-results.xml
           retention-days: 7
 
-  # ── 3. Build & Push Docker image ────────────────────────────────────
+  # ── 3. Build & Push ────────────────────────────────────────────────
   build:
     name: Build & Push Docker image
     runs-on: self-hosted
@@ -108,19 +115,32 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build image
-        working-directory: ${{ env.SERVICE_PATH }}
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.SERVICE_PATH }}
+          file: ${{ env.SERVICE_PATH }}/dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+          # Cache BuildKit sur le runner self-hosted (disque local)
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      # Évite la croissance infinie du cache sur le runner
+      - name: Rotate build cache
         run: |
-          docker build \
-            -f dockerfile \
-            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -t ${{ env.IMAGE_NAME }}:latest \
-            .
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
       - name: Scan image with Trivy
         run: |
@@ -131,12 +151,7 @@ jobs:
             --format table \
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: Push image
-        run: |
-          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.IMAGE_NAME }}:latest
-
-  # ── 4. Update gitops-repo ────────────────────────────────────────────
+  # ── 4. Deploy gitops ───────────────────────────────────────────────
   deploy:
     name: Update gitops-repo
     runs-on: self-hosted
@@ -148,7 +163,7 @@ jobs:
 
     steps:
       - name: Checkout gitops-repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           repository: yvescape/gitops-repo
           token: ${{ secrets.GITOPS_TOKEN }}
